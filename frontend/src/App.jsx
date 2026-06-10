@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useParams } from 'react-router-dom';
-import { ShieldCheck, Stethoscope, Warehouse, Truck, ArrowLeft, LogIn, ShoppingBag, History, PlusCircle, DollarSign, Package, Trash2, Coins, TrendingUp, Layers, LogOut, Search, Edit2, CheckCircle, XCircle } from 'lucide-react';
+import { ShieldCheck, Stethoscope, Warehouse, Truck, ArrowLeft, LogIn, ShoppingBag, History, PlusCircle, Package, Trash2, Coins, TrendingUp, Layers, LogOut, Search, Edit2, CheckCircle, XCircle } from 'lucide-react';
 import DashboardLayout from './components/DashboardLayout';
 import AdminPageContent from './pages/AdminPage';
 import AdminUnitsPageContent from './pages/AdminUnitsPage';
 import AdminWarehousesPageContent from './pages/AdminWarehousesPage';
 import AdminConvoysPageContent from './pages/AdminConvoysPage';
+import ConvoyDashboardPage from './pages/ConvoyDashboardPage';
 
 // --- Auth Context Mock ---
 // Since we are focusing on Admin and bypassing standard Firebase email auth
@@ -61,6 +62,8 @@ const useAuth = () => {
           localStorage.setItem('biowin_role', expectedRole);
           if (expectedRole === 'warehouse') {
             localStorage.setItem('biowin_warehouse_data', JSON.stringify(data.warehouse));
+          } else if (expectedRole === 'convoy') {
+            localStorage.setItem('biowin_convoy_data', JSON.stringify(data.convoy));
           }
           return expectedRole;
         }
@@ -108,49 +111,171 @@ const Login = ({ login, isAuthenticated, userRole }) => {
   const displayRole = role ? role.charAt(0).toUpperCase() + role.slice(1) : 'System';
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-8 bg-gray-50">
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-8 text-center">
-        <div className="mb-8">
-          <div className="w-20 h-20 bg-primary-green/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <ShieldCheck size={40} className="text-primary-green" />
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '2rem',
+      background: 'linear-gradient(135deg, #0f2417 0%, #1a4d3a 40%, #2ecc71 100%)',
+      position: 'relative',
+      overflow: 'hidden',
+      fontFamily: "'Inter', sans-serif",
+    }}>
+      {/* Animated glow blob */}
+      <div style={{
+        position: 'absolute',
+        width: '500px', height: '500px',
+        borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(46,204,113,0.25) 0%, transparent 70%)',
+        top: '-100px', right: '-100px',
+        animation: 'loginBlobFloat 8s ease-in-out infinite',
+        pointerEvents: 'none',
+      }} />
+      <div style={{
+        position: 'absolute',
+        width: '350px', height: '350px',
+        borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(26,77,58,0.4) 0%, transparent 70%)',
+        bottom: '-80px', left: '-60px',
+        animation: 'loginBlobFloat 11s ease-in-out infinite reverse',
+        pointerEvents: 'none',
+      }} />
+      <style>{`
+        @keyframes loginBlobFloat {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(20px, -30px) scale(1.05); }
+          66% { transform: translate(-15px, 15px) scale(0.95); }
+        }
+        @keyframes loginCardIn {
+          from { opacity: 0; transform: translateY(30px) scale(0.97); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .login-input-premium:focus {
+          border-color: #2ecc71 !important;
+          box-shadow: 0 0 0 4px rgba(46,204,113,0.18) !important;
+          outline: none !important;
+        }
+        .login-btn-premium:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 25px rgba(46,204,113,0.45);
+        }
+        .login-btn-premium:active {
+          transform: scale(0.98);
+        }
+      `}</style>
+
+      <div style={{
+        background: 'rgba(255,255,255,0.97)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: '1px solid rgba(255,255,255,0.4)',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
+        borderRadius: '24px',
+        width: '100%',
+        maxWidth: '440px',
+        padding: '2.75rem 2.5rem',
+        textAlign: 'center',
+        animation: 'loginCardIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both',
+        position: 'relative',
+        zIndex: 1,
+      }}>
+        {/* Logo area */}
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{
+            width: '80px', height: '80px',
+            background: 'linear-gradient(135deg, #1a4d3a 0%, #2ecc71 100%)',
+            borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 1.25rem',
+            boxShadow: '0 8px 24px rgba(46,204,113,0.35)',
+          }}>
+            <ShieldCheck size={38} color="#ffffff" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">{displayRole} Login</h2>
-          <p className="text-slate-500">Please enter your credentials</p>
+          <h2 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0f2417', margin: '0 0 0.4rem', letterSpacing: '-0.02em' }}>
+            {displayRole} Login
+          </h2>
+          <p style={{ color: '#64748b', fontSize: '0.9375rem', margin: 0 }}>Please enter your credentials to continue</p>
         </div>
-        
-        {error && <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-6 text-sm font-medium">{error}</div>}
-        
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6 text-left">
-          <div className="flex flex-col gap-2">
-            <label className="font-medium text-slate-800 text-sm">{role === 'admin' ? 'Username' : `${displayRole} ID`}</label>
-            <input 
-              type="text" 
+
+        {error && (
+          <div style={{
+            background: '#fef2f2', color: '#b91c1c', padding: '0.75rem 1rem',
+            borderRadius: '10px', marginBottom: '1.5rem', fontSize: '0.875rem',
+            fontWeight: 600, border: '1px solid #fecaca',
+          }}>{error}</div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'left' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <label style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.875rem', letterSpacing: '0.01em' }}>
+              {role === 'admin' ? 'Username' : `${displayRole} ID`}
+            </label>
+            <input
+              type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder={role === 'admin' ? "e.g. Admin123" : "e.g. 123"}
+              placeholder={role === 'admin' ? 'e.g. Admin123' : 'e.g. 123'}
               required
-              className="px-4 py-3 border border-slate-200 rounded-lg text-base outline-none transition-all focus:border-primary-green focus:ring-4 focus:ring-primary-green/20"
+              className="login-input-premium"
+              style={{
+                padding: '0.875rem 1rem', border: '1.5px solid #e2e8f0',
+                borderRadius: '12px', fontSize: '1rem', outline: 'none',
+                transition: 'all 0.2s ease', background: '#f8fafc', color: '#0f172a',
+              }}
             />
           </div>
-          <div className="flex flex-col gap-2">
-            <label className="font-medium text-slate-800 text-sm">Password</label>
-            <input 
-              type="password" 
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <label style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.875rem', letterSpacing: '0.01em' }}>Password</label>
+            <input
+              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              className="px-4 py-3 border border-slate-200 rounded-lg text-base outline-none transition-all focus:border-primary-green focus:ring-4 focus:ring-primary-green/20"
+              className="login-input-premium"
+              style={{
+                padding: '0.875rem 1rem', border: '1.5px solid #e2e8f0',
+                borderRadius: '12px', fontSize: '1rem', outline: 'none',
+                transition: 'all 0.2s ease', background: '#f8fafc', color: '#0f172a',
+              }}
             />
           </div>
-          <button type="submit" className="bg-primary-green hover:bg-primary-dark text-white rounded-lg py-3.5 font-semibold flex items-center justify-center gap-2 mt-2 transition-all active:scale-[0.98]">
+          <button
+            type="submit"
+            className="login-btn-premium"
+            style={{
+              background: 'linear-gradient(135deg, #1a4d3a 0%, #2ecc71 100%)',
+              color: '#ffffff', border: 'none', borderRadius: '12px',
+              padding: '1rem', fontSize: '1rem', fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+              cursor: 'pointer', marginTop: '0.5rem',
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              boxShadow: '0 4px 15px rgba(46,204,113,0.3)',
+            }}
+          >
             <LogIn size={18} /> Sign In
           </button>
         </form>
-        <div className="mt-8 pt-6 border-t border-slate-100">
-          <Link to="/" className="inline-flex items-center gap-1.5 text-slate-500 text-sm hover:text-primary-green transition-colors">
+
+        <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid #f1f5f9' }}>
+          <Link to="/" style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            color: '#64748b', fontSize: '0.875rem', textDecoration: 'none',
+            transition: 'color 0.2s',
+          }}
+            onMouseEnter={e => e.currentTarget.style.color = '#2ecc71'}
+            onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
+          >
             <ArrowLeft size={14} /> Back to Dashboard
           </Link>
+        </div>
+
+        <div style={{
+          marginTop: '1.5rem', fontSize: '0.7rem', color: '#94a3b8',
+          fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase',
+        }}>
+          Biowin Agro Research • Secure Portal
         </div>
       </div>
     </div>
@@ -164,17 +289,62 @@ const ProtectedRoute = ({ isAuthenticated, userRole, requiredRole, children }) =
   return children;
 };
 
-const DashboardCard = ({ icon: Icon, title, subtitle, linkTo, footerText }) => {
+const dashCardAccents = [
+  { gradient: 'linear-gradient(135deg, #1a4d3a 0%, #2ecc71 100%)', glow: 'rgba(46,204,113,0.35)', border: 'rgba(46,204,113,0.25)' },
+  { gradient: 'linear-gradient(135deg, #0f4c75 0%, #1b94e0 100%)', glow: 'rgba(27,148,224,0.35)', border: 'rgba(27,148,224,0.25)' },
+  { gradient: 'linear-gradient(135deg, #5b21b6 0%, #a78bfa 100%)', glow: 'rgba(167,139,250,0.35)', border: 'rgba(167,139,250,0.25)' },
+  { gradient: 'linear-gradient(135deg, #c2410c 0%, #fb923c 100%)', glow: 'rgba(251,146,60,0.35)', border: 'rgba(251,146,60,0.25)' },
+];
+
+const DashboardCard = ({ icon: Icon, title, subtitle, linkTo, footerText, accentIdx = 0 }) => {
+  const accent = dashCardAccents[accentIdx] || dashCardAccents[0];
+  const [hovered, setHovered] = React.useState(false);
   return (
-    <Link to={linkTo} className="bg-white rounded-xl shadow-md overflow-hidden flex flex-col group hover:-translate-y-1 hover:shadow-lg transition-all duration-200">
-      <div className="p-8 flex-grow flex flex-col items-center justify-center text-center">
-        <div className="text-spice-dark mb-4 w-16 h-16 bg-spice-dark/10 rounded-full flex items-center justify-center">
-          <Icon size={32} />
+    <Link
+      to={linkTo}
+      style={{
+        background: '#ffffff',
+        borderRadius: '20px',
+        boxShadow: hovered ? `0 20px 50px ${accent.glow}` : '0 4px 24px rgba(0,0,0,0.07)',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        textDecoration: 'none',
+        transform: hovered ? 'translateY(-6px)' : 'translateY(0)',
+        transition: 'all 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+        border: `1px solid ${hovered ? accent.border : 'rgba(0,0,0,0.06)'}`,
+        position: 'relative',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Subtle top gradient bar */}
+      <div style={{ height: '4px', background: accent.gradient }} />
+      <div style={{ padding: '2.25rem 1.75rem', flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <div style={{
+          width: '72px', height: '72px', borderRadius: '20px',
+          background: accent.gradient,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: '1.25rem',
+          boxShadow: hovered ? `0 8px 24px ${accent.glow}` : `0 4px 12px ${accent.glow}`,
+          transition: 'box-shadow 0.3s ease',
+        }}>
+          <Icon size={32} color="#ffffff" />
         </div>
-        <h2 className="text-xl font-semibold text-slate-800 mb-2">{title}</h2>
-        <p className="text-sm text-slate-500">{subtitle}</p>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.5rem', letterSpacing: '-0.02em' }}>{title}</h2>
+        <p style={{ fontSize: '0.875rem', color: '#64748b', margin: 0 }}>{subtitle}</p>
       </div>
-      <div className="bg-spice-dark group-hover:bg-spice-darker text-white p-3 text-center font-semibold text-sm tracking-wide transition-colors">
+      <div style={{
+        background: hovered ? accent.gradient : '#f8fafc',
+        padding: '0.875rem',
+        textAlign: 'center',
+        fontWeight: 700,
+        fontSize: '0.8125rem',
+        letterSpacing: '0.04em',
+        color: hovered ? '#ffffff' : '#475569',
+        transition: 'all 0.3s ease',
+        textTransform: 'uppercase',
+      }}>
         {footerText}
       </div>
     </Link>
@@ -189,32 +359,82 @@ const Dashboard = ({ logout, isAuthenticated }) => {
   }, [isAuthenticated, logout]);
 
   const cards = [
-    { title: 'Admin', subtitle: 'System Administration', icon: ShieldCheck, linkTo: '/admin', footerText: 'Management Access' },
-    { title: 'Unit', subtitle: 'Operational Units', icon: Stethoscope, linkTo: '/unit', footerText: 'View Units' },
-    { title: 'Warehouse', subtitle: 'Inventory & Storage', icon: Warehouse, linkTo: '/warehouse', footerText: 'Manage Stock' },
-    { title: 'Convoy', subtitle: 'Transportation & Logistics', icon: Truck, linkTo: '/convoy', footerText: 'Track Fleet' }
+    { title: 'Admin', subtitle: 'System Administration', icon: ShieldCheck, linkTo: '/admin', footerText: 'Management Access', accentIdx: 0 },
+    { title: 'Unit', subtitle: 'Operational Units', icon: Stethoscope, linkTo: '/unit', footerText: 'View Units', accentIdx: 1 },
+    { title: 'Warehouse', subtitle: 'Inventory & Storage', icon: Warehouse, linkTo: '/warehouse', footerText: 'Manage Stock', accentIdx: 2 },
+    { title: 'Convoy', subtitle: 'Transportation & Logistics', icon: Truck, linkTo: '/convoy', footerText: 'Track Fleet', accentIdx: 3 }
   ];
 
   return (
-    <div className="max-w-7xl mx-auto p-8 min-h-screen">
-      <header className="mb-12 text-center relative flex flex-col items-center">
-        <h1 className="text-4xl font-bold text-slate-800 mb-2">Biowin Dashboard</h1>
-        <p className="text-slate-500 text-lg">Select a module to manage your operations</p>
-        {isAuthenticated && (
-          <button onClick={logout} className="absolute right-0 top-1/2 -translate-y-1/2 bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg font-semibold transition-colors">Logout</button>
-        )}
-      </header>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-        {cards.map((card, index) => (
-          <DashboardCard
-            key={index}
-            title={card.title}
-            subtitle={card.subtitle}
-            icon={card.icon}
-            linkTo={card.linkTo}
-            footerText={card.footerText}
-          />
-        ))}
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(160deg, #f0fdf4 0%, #f8fafc 60%, #eff6ff 100%)',
+      position: 'relative',
+      overflow: 'hidden',
+      fontFamily: "'Inter', sans-serif",
+    }}>
+      {/* Decorative background circles */}
+      <div style={{ position: 'absolute', top: '-120px', right: '-120px', width: '500px', height: '500px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(46,204,113,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', bottom: '-80px', left: '-80px', width: '400px', height: '400px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+      <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '4rem 2rem' }}>
+        {/* Header */}
+        <header style={{ marginBottom: '3.5rem', textAlign: 'center', position: 'relative' }}>
+          {/* Brand pill */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+            background: 'rgba(46,204,113,0.1)', border: '1px solid rgba(46,204,113,0.25)',
+            borderRadius: '999px', padding: '0.35rem 1rem',
+            marginBottom: '1.25rem', fontSize: '0.8125rem', fontWeight: 700,
+            color: '#1a4d3a', letterSpacing: '0.04em', textTransform: 'uppercase',
+          }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2ecc71', display: 'inline-block' }} />
+            Biowin Agro Research
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+            <img 
+              src="/logo.png" 
+              alt="SIGWE Logo" 
+              style={{ 
+                height: '80px', 
+                objectFit: 'contain',
+                filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.1))'
+              }} 
+            />
+          </div>
+          <p style={{ color: '#64748b', fontSize: '1.125rem', margin: 0 }}>Select your portal to continue</p>
+          {isAuthenticated && (
+            <button onClick={logout} style={{
+              position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)',
+              background: '#ef4444', color: '#fff', border: 'none',
+              padding: '0.5rem 1.25rem', borderRadius: '10px', fontWeight: 700,
+              cursor: 'pointer', fontSize: '0.875rem',
+            }}>Logout</button>
+          )}
+        </header>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '1.75rem',
+        }}>
+          {cards.map((card, index) => (
+            <DashboardCard
+              key={index}
+              title={card.title}
+              subtitle={card.subtitle}
+              icon={card.icon}
+              linkTo={card.linkTo}
+              footerText={card.footerText}
+              accentIdx={card.accentIdx}
+            />
+          ))}
+        </div>
+
+        {/* Brand watermark footer */}
+        <div style={{ marginTop: '4rem', textAlign: 'center', color: '#cbd5e1', fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          Biowin Agro Research • Operations Management Platform
+        </div>
       </div>
     </div>
   );
@@ -291,9 +511,11 @@ const UnitPage = () => {
   const [unitData, setUnitData] = useState(null);
   
   // Dashboard states
-  const [activeTab, setActiveTab] = useState('stock'); // 'stock', 'billing', 'history'
+  const [activeTab, setActiveTab] = useState('stock'); // 'stock', 'billing', 'history', 'deliveries'
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
+  const [deliveries, setDeliveries] = useState([]);
+  const [viewBillData, setViewBillData] = useState(null); // bill object | null
   
   // Stock Form state
   const [productQty, setProductQty] = useState('');
@@ -335,6 +557,7 @@ const UnitPage = () => {
       fetchSales();
       fetchLatestMetadata();
       fetchGlobalProducts();
+      fetchDeliveries();
     }
   }, [isLoggedIn, unitData?.unitId]);
 
@@ -347,6 +570,18 @@ const UnitPage = () => {
       }
     } catch (err) {
       console.error("Error fetching global products:", err);
+    }
+  };
+
+  const fetchDeliveries = async () => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/units/${unitData.unitId}/deliveries`);
+      const data = await res.json();
+      if (data.success) {
+        setDeliveries(data.bills);
+      }
+    } catch (err) {
+      console.error("Error fetching deliveries:", err);
     }
   };
 
@@ -571,7 +806,7 @@ const UnitPage = () => {
 
   const downloadSalesHistory = () => {
     if (sales.length === 0) return;
-    const headers = ["Receipt ID", "Date & Time", "Item Name", "Quantity", "Price", "Payment Method", "Total Revenue"];
+    const headers = ["Receipt ID", "Date & Time", "Item Name", "Quantity", "Price (INR)", "Payment Method", "Total Revenue (INR)"];
     const rows = [];
     sales.forEach(sale => {
       sale.items.forEach(item => {
@@ -605,49 +840,163 @@ const UnitPage = () => {
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-8 bg-gray-50">
-        <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-8 text-center border border-slate-100">
-          <div className="mb-8">
-            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Stethoscope size={40} className="text-spice-dark" />
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '2rem',
+        background: 'linear-gradient(135deg, #0f2417 0%, #1a4d3a 40%, #2ecc71 100%)',
+        position: 'relative',
+        overflow: 'hidden',
+        fontFamily: "'Inter', sans-serif",
+      }}>
+        {/* Animated glow blobs */}
+        <div style={{
+          position: 'absolute', width: '500px', height: '500px',
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(46,204,113,0.25) 0%, transparent 70%)',
+          top: '-100px', right: '-100px',
+          animation: 'loginBlobFloat 8s ease-in-out infinite',
+          pointerEvents: 'none',
+        }} />
+        <div style={{
+          position: 'absolute', width: '350px', height: '350px',
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(26,77,58,0.4) 0%, transparent 70%)',
+          bottom: '-80px', left: '-60px',
+          animation: 'loginBlobFloat 11s ease-in-out infinite reverse',
+          pointerEvents: 'none',
+        }} />
+        <style>{`
+          @keyframes loginBlobFloat {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(20px, -30px) scale(1.05); }
+            66% { transform: translate(-15px, 15px) scale(0.95); }
+          }
+          @keyframes unitCardIn {
+            from { opacity: 0; transform: translateY(30px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+          }
+          .unit-login-input:focus {
+            border-color: #2ecc71 !important;
+            box-shadow: 0 0 0 4px rgba(46,204,113,0.18) !important;
+            outline: none !important;
+          }
+          .unit-login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(46,204,113,0.45) !important;
+          }
+          .unit-login-btn:active { transform: scale(0.98); }
+        `}</style>
+
+        <div style={{
+          background: 'rgba(255,255,255,0.97)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          border: '1px solid rgba(255,255,255,0.4)',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
+          borderRadius: '24px',
+          width: '100%', maxWidth: '440px',
+          padding: '2.75rem 2.5rem',
+          textAlign: 'center',
+          animation: 'unitCardIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both',
+          position: 'relative', zIndex: 1,
+        }}>
+          {/* Logo */}
+          <div style={{ marginBottom: '2rem' }}>
+            <div style={{
+              width: '80px', height: '80px',
+              background: 'linear-gradient(135deg, #1a4d3a 0%, #2ecc71 100%)',
+              borderRadius: '50%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 1.25rem',
+              boxShadow: '0 8px 24px rgba(46,204,113,0.35)',
+            }}>
+              <Stethoscope size={38} color="#ffffff" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">Unit Manager Login</h2>
-            <p className="text-slate-500">Access unit stock, billing & sales history</p>
+            <h2 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0f2417', margin: '0 0 0.4rem', letterSpacing: '-0.02em' }}>
+              Unit Manager Login
+            </h2>
+            <p style={{ color: '#64748b', fontSize: '0.9375rem', margin: 0 }}>Access unit stock, billing &amp; sales history</p>
           </div>
-          
-          {loginError && <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-6 text-sm font-medium">{loginError}</div>}
-          
-          <form onSubmit={handleLogin} className="flex flex-col gap-6 text-left">
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-slate-800 text-sm">Unit ID</label>
-              <input 
-                type="text" 
+
+          {loginError && (
+            <div style={{
+              background: '#fef2f2', color: '#b91c1c', padding: '0.75rem 1rem',
+              borderRadius: '10px', marginBottom: '1.5rem', fontSize: '0.875rem',
+              fontWeight: 600, border: '1px solid #fecaca',
+            }}>{loginError}</div>
+          )}
+
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'left' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.875rem' }}>Unit ID</label>
+              <input
+                type="text"
                 value={unitIdInput}
                 onChange={(e) => setUnitIdInput(e.target.value)}
                 placeholder="e.g. 1042"
                 required
-                className="px-4 py-3 border border-slate-200 rounded-lg text-base outline-none transition-all focus:border-spice-dark focus:ring-4 focus:ring-spice-dark/20"
+                className="unit-login-input"
+                style={{
+                  padding: '0.875rem 1rem', border: '1.5px solid #e2e8f0',
+                  borderRadius: '12px', fontSize: '1rem', outline: 'none',
+                  transition: 'all 0.2s ease', background: '#f8fafc', color: '#0f172a',
+                }}
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="font-medium text-slate-800 text-sm">Password</label>
-              <input 
-                type="password" 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.875rem' }}>Password</label>
+              <input
+                type="password"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="px-4 py-3 border border-slate-200 rounded-lg text-base outline-none transition-all focus:border-spice-dark focus:ring-4 focus:ring-spice-dark/20"
+                className="unit-login-input"
+                style={{
+                  padding: '0.875rem 1rem', border: '1.5px solid #e2e8f0',
+                  borderRadius: '12px', fontSize: '1rem', outline: 'none',
+                  transition: 'all 0.2s ease', background: '#f8fafc', color: '#0f172a',
+                }}
               />
             </div>
-            <button type="submit" className="bg-spice-dark hover:bg-spice-darker text-white rounded-lg py-3.5 font-semibold flex items-center justify-center gap-2 mt-2 transition-all active:scale-[0.98] cursor-pointer border-0">
+            <button
+              type="submit"
+              className="unit-login-btn"
+              style={{
+                background: 'linear-gradient(135deg, #1a4d3a 0%, #2ecc71 100%)',
+                color: '#ffffff', border: 'none', borderRadius: '12px',
+                padding: '1rem', fontSize: '1rem', fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                cursor: 'pointer', marginTop: '0.5rem',
+                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                boxShadow: '0 4px 15px rgba(46,204,113,0.3)',
+              }}
+            >
               <LogIn size={18} /> Sign In
             </button>
           </form>
-          <div className="mt-8 pt-6 border-t border-slate-100">
-            <Link to="/" className="inline-flex items-center gap-1.5 text-slate-500 text-sm hover:text-spice-dark transition-colors">
+
+          <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid #f1f5f9' }}>
+            <Link to="/" style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              color: '#64748b', fontSize: '0.875rem', textDecoration: 'none',
+              transition: 'color 0.2s',
+            }}
+              onMouseEnter={e => e.currentTarget.style.color = '#2ecc71'}
+              onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
+            >
               <ArrowLeft size={14} /> Back to Dashboard
             </Link>
+          </div>
+
+          <div style={{
+            marginTop: '1.5rem', fontSize: '0.7rem', color: '#94a3b8',
+            fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase',
+          }}>
+            Biowin Agro Research • Secure Portal
           </div>
         </div>
       </div>
@@ -696,34 +1045,38 @@ const UnitPage = () => {
           </div>
         </div>
 
-        <nav className="flex flex-col gap-2 flex-grow">
-          <button 
-            onClick={() => setActiveTab('stock')}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg font-semibold text-[0.95rem] transition-all cursor-pointer w-full text-left border-0 ${
-              activeTab === 'stock' ? 'bg-orange-100 text-amber-900' : 'bg-transparent text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Package size={20} className={activeTab === 'stock' ? 'text-amber-600' : 'text-slate-500'} />
-            <span>Stock in Hand</span>
-          </button>
-          <button 
-            onClick={() => setActiveTab('billing')}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg font-semibold text-[0.95rem] transition-all cursor-pointer w-full text-left border-0 ${
-              activeTab === 'billing' ? 'bg-orange-100 text-amber-900' : 'bg-transparent text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <ShoppingBag size={20} className={activeTab === 'billing' ? 'text-amber-600' : 'text-slate-500'} />
-            <span>Billing (POS)</span>
-          </button>
-          <button 
-            onClick={() => setActiveTab('history')}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg font-semibold text-[0.95rem] transition-all cursor-pointer w-full text-left border-0 ${
-              activeTab === 'history' ? 'bg-orange-100 text-amber-900' : 'bg-transparent text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <History size={20} className={activeTab === 'history' ? 'text-amber-600' : 'text-slate-500'} />
-            <span>Sales History</span>
-          </button>
+        <nav className="flex flex-col gap-1.5 flex-grow">
+          {[
+            { tab: 'stock', Icon: Package, label: 'Stock in Hand' },
+            { tab: 'billing', Icon: ShoppingBag, label: 'Billing (POS)' },
+            { tab: 'history', Icon: History, label: 'Sales History' },
+            { tab: 'deliveries', Icon: Truck, label: 'Deliveries & Bills' },
+          ].map(({ tab, Icon: NavIcon, label }) => {
+            const isActive = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem',
+                  padding: '0.75rem 1rem', borderRadius: '10px',
+                  fontWeight: 600, fontSize: '0.9375rem',
+                  transition: 'all 0.2s ease', cursor: 'pointer', width: '100%',
+                  textAlign: 'left', border: 'none',
+                  background: isActive ? 'linear-gradient(90deg, rgba(46,204,113,0.12) 0%, rgba(46,204,113,0.04) 100%)' : 'transparent',
+                  color: isActive ? '#1a4d3a' : '#475569',
+                  borderLeft: isActive ? '3px solid #2ecc71' : '3px solid transparent',
+                  paddingLeft: isActive ? 'calc(1rem - 0px)' : '1rem',
+                  transform: isActive ? 'none' : 'none',
+                }}
+                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; e.currentTarget.style.transform = 'translateX(2px)'; } }}
+                onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.transform = 'none'; } }}
+              >
+                <NavIcon size={20} style={{ color: isActive ? '#2ecc71' : '#94a3b8', flexShrink: 0 }} />
+                <span>{label}</span>
+              </button>
+            );
+          })}
         </nav>
 
         <div className="flex flex-col gap-2 pt-6 border-t border-slate-200">
@@ -738,32 +1091,79 @@ const UnitPage = () => {
       </aside>
 
       <main className="flex-grow p-8 lg:p-10 overflow-y-auto">
+        <style>{`
+          @keyframes fadeInUpStat {
+            from { opacity: 0; transform: translateY(18px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
-            <div className="p-4 bg-slate-100 rounded-lg text-spice-dark">
+          {/* Revenue Card */}
+          <div style={{
+            background: '#fff', padding: '1.5rem', borderRadius: '16px',
+            boxShadow: '0 2px 16px rgba(46,204,113,0.08)', border: '1px solid rgba(46,204,113,0.1)',
+            display: 'flex', alignItems: 'center', gap: '1rem',
+            animation: 'fadeInUpStat 0.5s ease both',
+          }}>
+            <div style={{
+              padding: '1rem', borderRadius: '14px',
+              background: 'linear-gradient(135deg, #1a4d3a 0%, #2ecc71 100%)',
+              boxShadow: '0 4px 14px rgba(46,204,113,0.35)', flexShrink: 0,
+              color: '#fff',
+            }}>
               <Coins size={24} />
             </div>
             <div>
-              <p className="text-sm text-slate-500 font-medium m-0">Revenue</p>
-              <h3 className="text-2xl font-bold text-slate-800 m-0">₹{unitData?.revenue || 0}</h3>
+              <p style={{ fontSize: '0.8125rem', color: '#64748b', fontWeight: 600, margin: 0 }}>Revenue</p>
+              <h3 style={{ fontSize: '1.75rem', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.03em' }}>
+                ₹{(unitData?.revenue || 0).toLocaleString('en-IN')}
+              </h3>
             </div>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
-            <div className="p-4 bg-sky-50 rounded-lg text-sky-600">
+
+          {/* Total Sales Card */}
+          <div style={{
+            background: '#fff', padding: '1.5rem', borderRadius: '16px',
+            boxShadow: '0 2px 16px rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.1)',
+            display: 'flex', alignItems: 'center', gap: '1rem',
+            animation: 'fadeInUpStat 0.5s 0.1s ease both',
+          }}>
+            <div style={{
+              padding: '1rem', borderRadius: '14px',
+              background: 'linear-gradient(135deg, #0f4c75 0%, #38bdf8 100%)',
+              boxShadow: '0 4px 14px rgba(56,189,248,0.35)', flexShrink: 0,
+              color: '#fff',
+            }}>
               <TrendingUp size={24} />
             </div>
             <div>
-              <p className="text-sm text-slate-500 font-medium m-0">Total Sales Count</p>
-              <h3 className="text-2xl font-bold text-slate-800 m-0">{unitData?.totalSales || 0}</h3>
+              <p style={{ fontSize: '0.8125rem', color: '#64748b', fontWeight: 600, margin: 0 }}>Total Sales Count</p>
+              <h3 style={{ fontSize: '1.75rem', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.03em' }}>
+                {unitData?.totalSales || 0}
+              </h3>
             </div>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
-            <div className="p-4 bg-purple-50 rounded-lg text-purple-600">
+
+          {/* Unique Products Card */}
+          <div style={{
+            background: '#fff', padding: '1.5rem', borderRadius: '16px',
+            boxShadow: '0 2px 16px rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.1)',
+            display: 'flex', alignItems: 'center', gap: '1rem',
+            animation: 'fadeInUpStat 0.5s 0.2s ease both',
+          }}>
+            <div style={{
+              padding: '1rem', borderRadius: '14px',
+              background: 'linear-gradient(135deg, #5b21b6 0%, #a78bfa 100%)',
+              boxShadow: '0 4px 14px rgba(167,139,250,0.35)', flexShrink: 0,
+              color: '#fff',
+            }}>
               <Package size={24} />
             </div>
             <div>
-              <p className="text-sm text-slate-500 font-medium m-0">Unique Products</p>
-              <h3 className="text-2xl font-bold text-slate-800 m-0">{products.length}</h3>
+              <p style={{ fontSize: '0.8125rem', color: '#64748b', fontWeight: 600, margin: 0 }}>Unique Products</p>
+              <h3 style={{ fontSize: '1.75rem', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.03em' }}>
+                {products.length}
+              </h3>
             </div>
           </div>
         </div>
@@ -1081,24 +1481,34 @@ const UnitPage = () => {
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('Cash')}
-                      className={`flex-1 py-2 rounded-lg font-bold border transition-all cursor-pointer ${
-                        paymentMethod === 'Cash'
-                          ? 'bg-orange-50 border-amber-500 text-amber-800'
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                      }`}
+                      style={{
+                        flex: 1, padding: '0.625rem 0.75rem',
+                        borderRadius: '10px', fontWeight: 700, fontSize: '0.875rem',
+                        border: paymentMethod === 'Cash' ? '2px solid #2ecc71' : '1.5px solid #e2e8f0',
+                        background: paymentMethod === 'Cash' ? 'linear-gradient(135deg, rgba(46,204,113,0.1) 0%, rgba(26,77,58,0.08) 100%)' : '#fff',
+                        color: paymentMethod === 'Cash' ? '#1a4d3a' : '#64748b',
+                        cursor: 'pointer', transition: 'all 0.2s ease',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                        boxShadow: paymentMethod === 'Cash' ? '0 2px 8px rgba(46,204,113,0.2)' : 'none',
+                      }}
                     >
-                      Cash
+                      <span style={{ fontSize: '1rem' }}>₹</span> Cash
                     </button>
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('UPI')}
-                      className={`flex-1 py-2 rounded-lg font-bold border transition-all cursor-pointer ${
-                        paymentMethod === 'UPI'
-                          ? 'bg-orange-50 border-amber-500 text-amber-800'
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                      }`}
+                      style={{
+                        flex: 1, padding: '0.625rem 0.75rem',
+                        borderRadius: '10px', fontWeight: 700, fontSize: '0.875rem',
+                        border: paymentMethod === 'UPI' ? '2px solid #6366f1' : '1.5px solid #e2e8f0',
+                        background: paymentMethod === 'UPI' ? 'linear-gradient(135deg, rgba(99,102,241,0.1) 0%, rgba(79,70,229,0.08) 100%)' : '#fff',
+                        color: paymentMethod === 'UPI' ? '#4338ca' : '#64748b',
+                        cursor: 'pointer', transition: 'all 0.2s ease',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                        boxShadow: paymentMethod === 'UPI' ? '0 2px 8px rgba(99,102,241,0.2)' : 'none',
+                      }}
                     >
-                      UPI
+                      <span style={{ fontSize: '0.75rem', fontWeight: 900, letterSpacing: '-0.02em' }}>UPI</span> Pay
                     </button>
                   </div>
                 </div>
@@ -1109,16 +1519,31 @@ const UnitPage = () => {
                   </span>
                 </div>
                 
+                <style>{`
+                  @keyframes payBtnPulse {
+                    0%, 100% { box-shadow: 0 4px 20px rgba(46,204,113,0.4); }
+                    50% { box-shadow: 0 4px 35px rgba(46,204,113,0.65); }
+                  }
+                  .pay-now-btn:hover { transform: translateY(-2px); }
+                  .pay-now-btn:active { transform: scale(0.98); }
+                `}</style>
                 <button 
                   onClick={handleCheckout}
                   disabled={cart.length === 0}
-                  className={`w-full py-4 rounded-xl font-black text-lg flex items-center justify-center gap-2 transition-all border-0 ${
-                    cart.length > 0 
-                      ? 'bg-spice-dark hover:bg-spice-darker text-white shadow-lg shadow-slate-200 cursor-pointer active:scale-[0.98]' 
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  }`}
+                  className={cart.length > 0 ? 'pay-now-btn' : ''}
+                  style={{
+                    width: '100%', padding: '1.1rem',
+                    borderRadius: '14px', fontWeight: 900, fontSize: '1.1rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                    border: 'none', cursor: cart.length > 0 ? 'pointer' : 'not-allowed',
+                    background: cart.length > 0 ? 'linear-gradient(135deg, #1a4d3a 0%, #2ecc71 100%)' : '#e2e8f0',
+                    color: cart.length > 0 ? '#ffffff' : '#94a3b8',
+                    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                    animation: cart.length > 0 ? 'payBtnPulse 2.5s ease-in-out infinite' : 'none',
+                    letterSpacing: '0.04em',
+                  }}
                 >
-                  PAY NOW
+                  <span style={{ fontSize: '1.2rem' }}>₹</span> PAY NOW
                 </button>
               </div>
             </div>
@@ -1198,6 +1623,189 @@ const UnitPage = () => {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'deliveries' && (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6" style={{ animation: 'fadeInUp 0.4s ease-out both' }}>
+            <h3 className="text-lg font-semibold text-slate-800 mb-6 text-left">Incoming Deliveries &amp; Bills</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 text-sm border-b border-slate-200">
+                    <th className="py-4 px-5 font-semibold">Job ID</th>
+                    <th className="py-4 px-5 font-semibold">Delivered Date</th>
+                    <th className="py-4 px-5 font-semibold">Total Amount</th>
+                    <th className="py-4 px-5 font-semibold">Payment Status</th>
+                    <th className="py-4 px-5 font-semibold">Bill</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deliveries.length === 0 ? (
+                    <tr><td colSpan="5" className="py-10 text-center text-slate-500">No deliveries found.</td></tr>
+                  ) : deliveries.map(bill => (
+                    <tr key={bill._id} className="border-b border-slate-100 transition-colors" style={{ transition: 'background 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'hsl(145,63%,98%)'}
+                      onMouseLeave={e => e.currentTarget.style.background = ''}
+                    >
+                      <td className="py-4 px-5 font-semibold text-slate-800">#{bill.jobId}</td>
+                      <td className="py-4 px-5 text-slate-600">{bill.deliveredAt ? new Date(bill.deliveredAt).toLocaleString() : '—'}</td>
+                      <td className="py-4 px-5 font-bold text-emerald-600" style={{ fontVariantNumeric: 'tabular-nums' }}>₹{Number(bill.totalAmount).toFixed(2)}</td>
+                      <td className="py-4 px-5">
+                        {bill.paymentCompleted ? (
+                          <span className="biowin-badge-paid">Paid</span>
+                        ) : (
+                          <span className="biowin-badge-pending">Pending</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-5">
+                        <button
+                          onClick={() => setViewBillData(bill)}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                            background: '#f8fafc', color: '#475569',
+                            border: '1.5px solid #e2e8f0', padding: '0.35rem 0.85rem',
+                            borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                            cursor: 'pointer', transition: 'all 0.2s ease',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'hsl(213,92%,96%)'; e.currentTarget.style.borderColor = 'hsl(213,92%,70%)'; e.currentTarget.style.color = 'hsl(213,92%,38%)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.color = '#475569'; }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                          View Bill
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Unit Bill Modal */}
+            {viewBillData && (
+              <div
+                style={{
+                  position: 'fixed', inset: 0,
+                  background: 'rgba(15,23,42,0.65)',
+                  backdropFilter: 'blur(6px)',
+                  zIndex: 50,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '1.5rem',
+                  animation: 'fadeIn 0.2s ease-out both',
+                }}
+                onClick={() => setViewBillData(null)}
+              >
+                <div
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '20px',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+                    maxWidth: '560px',
+                    width: '100%',
+                    maxHeight: '90vh',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    animation: 'bounceIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both',
+                  }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  {/* Header */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '1.25rem 1.5rem',
+                    background: 'linear-gradient(135deg, #1a4d3a 0%, #2ecc71 100%)',
+                    color: '#fff', position: 'relative',
+                  }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.75)' }}>
+                      Biowin Agro Research
+                    </span>
+                    <h2 style={{
+                      position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+                      fontSize: '1.1rem', fontWeight: 800, color: '#fff', margin: 0,
+                    }}>Delivery Bill</h2>
+                    <button
+                      onClick={() => setViewBillData(null)}
+                      style={{
+                        background: 'rgba(255,255,255,0.15)', border: 'none',
+                        borderRadius: '8px', padding: '0.4rem', cursor: 'pointer',
+                        color: '#fff', display: 'flex', alignItems: 'center', zIndex: 1,
+                      }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+
+                  {/* Body */}
+                  <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
+                    {/* Meta */}
+                    <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '1rem 1.25rem', marginBottom: '1.25rem', border: '1px solid #f1f5f9' }}>
+                      {[
+                        ['Job ID', `#${viewBillData.jobId}`],
+                        ['Convoy ID', viewBillData.convoyId || '—'],
+                        ['Unit Name', viewBillData.unitName || unitData?.name || '—'],
+                        ['Delivered Date', viewBillData.deliveredAt ? new Date(viewBillData.deliveredAt).toLocaleString() : '—'],
+                        ['Payment Status', null],
+                      ].map(([label, value], i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', borderBottom: i < 4 ? '1px solid #f1f5f9' : 'none', fontSize: '0.9rem' }}>
+                          <span style={{ color: '#64748b', fontWeight: 500, fontSize: '0.84rem' }}>{label}</span>
+                          {label === 'Payment Status' ? (
+                            viewBillData.paymentCompleted
+                              ? <span className="biowin-badge-paid">Paid</span>
+                              : <span className="biowin-badge-pending">Pending</span>
+                          ) : (
+                            <span style={{ fontWeight: 700, color: '#1e293b' }}>{value}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Items table */}
+                    {viewBillData.items && viewBillData.items.length > 0 && (
+                      <div style={{ marginBottom: '1.25rem', overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                          <thead>
+                            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                              {['Product', 'Qty', 'Unit Price', 'Subtotal'].map(h => (
+                                <th key={h} style={{ textAlign: 'left', padding: '0.6rem 0.75rem', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {viewBillData.items.map((it, idx) => (
+                              <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '0.65rem 0.75rem', color: '#334155' }}>{it.name || it.productName}</td>
+                                <td style={{ padding: '0.65rem 0.75rem', color: '#334155' }}>{it.quantity}</td>
+                                <td style={{ padding: '0.65rem 0.75rem', color: '#334155' }}>₹{Number(it.price).toFixed(2)}</td>
+                                <td style={{ padding: '0.65rem 0.75rem', fontWeight: 700, color: '#16a34a' }}>₹{(it.quantity * it.price).toFixed(2)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Grand total */}
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      background: 'linear-gradient(135deg, hsl(145,63%,94%), hsl(145,63%,90%))',
+                      border: '1.5px solid hsl(145,63%,80%)',
+                      borderRadius: '12px', padding: '0.875rem 1.25rem',
+                    }}>
+                      <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'hsl(145,63%,25%)' }}>Grand Total</span>
+                      <span style={{ fontSize: '1.4rem', fontWeight: 900, color: 'hsl(145,63%,25%)', letterSpacing: '-0.02em' }}>
+                        ₹{Number(viewBillData.totalAmount).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button className="biowin-btn-secondary" onClick={() => setViewBillData(null)}>Close</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -1480,9 +2088,14 @@ const ConvoyPage = ({ logout }) => {
   const navItems = [
     { label: 'Convoy', icon: Truck, path: '/convoy' }
   ];
+  
+  const convoyDataString = localStorage.getItem('biowin_convoy_data');
+  const convoyData = convoyDataString ? JSON.parse(convoyDataString) : null;
+  const convoyId = convoyData ? convoyData.convoyId : null;
+
   return (
     <DashboardLayout navItems={navItems} logout={logout}>
-      <PageTemplate title="Convoy Tracking" description="Fleet and logistics management." />
+      <ConvoyDashboardPage convoyId={convoyId} />
     </DashboardLayout>
   );
 };

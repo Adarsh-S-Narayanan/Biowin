@@ -770,3 +770,211 @@ app.delete('/api/warehouses/products/:productId', async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
+
+// --- CONVOY JOBS & DELIVERIES ---
+
+// Create a new job for a convoy
+app.post('/api/convoys/:convoyId/jobs', async (req, res) => {
+  const { convoyId } = req.params;
+  try {
+    const db = client.db("Convoys");
+    let jobId;
+    let isUnique = false;
+    while (!isUnique) {
+      jobId = generate5DigitHex();
+      const check = await db.collection("jobs").findOne({ jobId });
+      if (!check) isUnique = true;
+    }
+    const newJob = {
+      jobId,
+      convoyId,
+      status: 'Started', // Started, Completed
+      totalStock: 0,
+      deliveries: [], // { unitId, unitName, items: [], status, billGenerated, paymentCompleted }
+      createdAt: new Date()
+    };
+    await db.collection("jobs").insertOne(newJob);
+    res.status(201).json({ success: true, job: newJob, message: "Job started successfully" });
+  } catch (err) {
+    console.error("Error starting job:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Get jobs for a convoy
+app.get('/api/convoys/:convoyId/jobs', async (req, res) => {
+  const { convoyId } = req.params;
+  try {
+    const db = client.db("Convoys");
+    const jobs = await db.collection("jobs").find({ convoyId }).sort({ createdAt: -1 }).toArray();
+    res.status(200).json({ success: true, jobs });
+  } catch (err) {
+    console.error("Error fetching jobs:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Add or update deliveries in a job
+app.put('/api/convoys/:convoyId/jobs/:jobId/deliveries', async (req, res) => {
+  const { jobId } = req.params;
+  const { unitId, unitName, items } = req.body; // items: [{ productId, name, quantity, price }]
+  try {
+    const db = client.db("Convoys");
+    const job = await db.collection("jobs").findOne({ jobId });
+    if (!job) return res.status(404).json({ success: false, message: "Job not found" });
+
+    // Calculate total stock for this delivery
+    let deliveryStock = 0;
+    items.forEach(item => deliveryStock += Number(item.quantity));
+
+    const newDelivery = {
+      unitId,
+      unitName,
+      items,
+      status: 'Pending',
+      billGenerated: false,
+      paymentCompleted: false,
+      totalAmount: items.reduce((sum, item) => sum + (item.quantity * item.price), 0),
+      addedAt: new Date()
+    };
+
+    const existingDeliveryIndex = job.deliveries.findIndex(d => d.unitId === unitId && d.status === 'Pending');
+    let updatedDeliveries = [...job.deliveries];
+
+    if (existingDeliveryIndex >= 0) {
+      updatedDeliveries[existingDeliveryIndex] = newDelivery;
+    } else {
+      updatedDeliveries.push(newDelivery);
+    }
+
+    const newTotalStock = updatedDeliveries.reduce((total, d) => {
+      let dStock = 0;
+      d.items.forEach(i => dStock += Number(i.quantity));
+      return total + dStock;
+    }, 0);
+
+    await db.collection("jobs").updateOne(
+      { jobId },
+      { $set: { deliveries: updatedDeliveries, totalStock: newTotalStock } }
+    );
+
+    res.status(200).json({ success: true, message: "Delivery route updated successfully", job: { ...job, deliveries: updatedDeliveries, totalStock: newTotalStock } });
+  } catch (err) {
+    console.error("Error updating job deliveries:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Mark delivery as completed, update unit stock, and generate bill
+app.put('/api/convoys/:convoyId/jobs/:jobId/deliveries/:unitId/deliver', async (req, res) => {
+  const { convoyId, jobId, unitId } = req.params;
+  try {
+    const db = client.db("Convoys");
+    const job = await db.collection("jobs").findOne({ jobId });
+    if (!job) return res.status(404).json({ success: false, message: "Job not found" });
+
+    const deliveryIndex = job.deliveries.findIndex(d => d.unitId === unitId);
+    if (deliveryIndex === -1) return res.status(404).json({ success: false, message: "Delivery not found for this unit" });
+
+    const delivery = job.deliveries[deliveryIndex];
+    if (delivery.status === 'Delivered') return res.status(400).json({ success: false, message: "Already delivered" });
+
+    // Update Unit Stock
+    const unitDb = client.db(`Unit_${unitId}`);
+    for (const item of delivery.items) {
+      const existingProduct = await unitDb.collection("stocks").findOne({ productId: item.productId });
+      if (existingProduct) {
+        await unitDb.collection("stocks").updateOne(
+          { _id: existingProduct._id },
+          { 
+            $inc: { quantity: Number(item.quantity) },
+            $set: { price: item.price, name: item.name }
+          }
+        );
+      } else {
+        await unitDb.collection("stocks").insertOne({
+          productId: item.productId,
+          name: item.name,
+          quantity: Number(item.quantity),
+          price: item.price,
+          createdAt: new Date()
+        });
+      }
+    }
+
+    // Generate Bill in Unit's Database
+    const billRecord = {
+      jobId,
+      convoyId,
+      items: delivery.items,
+      totalAmount: delivery.totalAmount,
+      status: 'Delivered',
+      paymentCompleted: false,
+      deliveredAt: new Date()
+    };
+    await unitDb.collection("bills").insertOne(billRecord);
+
+    // Update Job Delivery Status
+    job.deliveries[deliveryIndex].status = 'Delivered';
+    job.deliveries[deliveryIndex].billGenerated = true;
+
+    // Check if all deliveries are completed to mark job as completed
+    const allDelivered = job.deliveries.every(d => d.status === 'Delivered');
+
+    await db.collection("jobs").updateOne(
+      { jobId },
+      { $set: { deliveries: job.deliveries, status: allDelivered ? 'Completed' : 'Started' } }
+    );
+
+    res.status(200).json({ success: true, message: "Items delivered and bill generated successfully" });
+  } catch (err) {
+    console.error("Error marking delivery:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Mark payment as completed (Convoy driver action)
+app.put('/api/convoys/:convoyId/jobs/:jobId/deliveries/:unitId/pay', async (req, res) => {
+  const { jobId, unitId } = req.params;
+  try {
+    const db = client.db("Convoys");
+    const job = await db.collection("jobs").findOne({ jobId });
+    if (!job) return res.status(404).json({ success: false, message: "Job not found" });
+
+    const deliveryIndex = job.deliveries.findIndex(d => d.unitId === unitId);
+    if (deliveryIndex === -1) return res.status(404).json({ success: false, message: "Delivery not found for this unit" });
+
+    // Update job delivery payment status
+    job.deliveries[deliveryIndex].paymentCompleted = true;
+    await db.collection("jobs").updateOne(
+      { jobId },
+      { $set: { deliveries: job.deliveries } }
+    );
+
+    // Update unit's bill payment status
+    const unitDb = client.db(`Unit_${unitId}`);
+    await unitDb.collection("bills").updateOne(
+      { jobId },
+      { $set: { paymentCompleted: true } }
+    );
+
+    res.status(200).json({ success: true, message: "Payment marked as completed" });
+  } catch (err) {
+    console.error("Error marking payment:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Get bills/deliveries for a unit
+app.get('/api/units/:unitId/deliveries', async (req, res) => {
+  const { unitId } = req.params;
+  try {
+    const unitDb = client.db(`Unit_${unitId}`);
+    const bills = await unitDb.collection("bills").find({}).sort({ deliveredAt: -1 }).toArray();
+    res.status(200).json({ success: true, bills });
+  } catch (err) {
+    console.error("Error fetching unit bills:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
