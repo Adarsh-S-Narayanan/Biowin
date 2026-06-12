@@ -40,7 +40,7 @@ async function run() {
 }
 run().catch(console.dir);
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`Backend server is running on port: ${port}`);
 });
 
