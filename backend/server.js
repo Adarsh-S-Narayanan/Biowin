@@ -443,6 +443,76 @@ app.get('/api/units/:unitId/sales', async (req, res) => {
   }
 });
 
+// Get returns for a unit
+app.get('/api/units/:unitId/returns', async (req, res) => {
+  const { unitId } = req.params;
+  try {
+    const db = client.db("Units");
+    const unit = await db.collection("units_metadata").findOne({ unitId });
+    if (!unit) {
+      return res.status(404).json({ success: false, message: "Unit not found" });
+    }
+    const unitDb = client.db(`Unit_${unitId}`);
+    const returns = await unitDb.collection("returns")
+      .find({})
+      .sort({ timestamp: -1 })
+      .toArray();
+    res.status(200).json({ success: true, returns });
+  } catch (err) {
+    console.error("Error fetching unit returns:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Process a return from a unit
+app.post('/api/units/:unitId/returns', async (req, res) => {
+  const { unitId } = req.params;
+  const { productId, quantity, reason } = req.body;
+
+  if (!productId || quantity === undefined || quantity <= 0) {
+    return res.status(400).json({ success: false, message: "Valid Product ID and quantity are required" });
+  }
+
+  try {
+    const db = client.db("Units");
+    const unit = await db.collection("units_metadata").findOne({ unitId });
+    if (!unit) {
+      return res.status(404).json({ success: false, message: "Unit not found" });
+    }
+
+    const unitDb = client.db(`Unit_${unitId}`);
+    
+    // Check if product exists in stock
+    const product = await unitDb.collection("stocks").findOne({ productId });
+    if (!product || product.quantity < quantity) {
+      return res.status(400).json({ success: false, message: `Insufficient stock to return. Available: ${product ? product.quantity : 0}` });
+    }
+
+    // Reduce stock
+    await unitDb.collection("stocks").updateOne(
+      { productId },
+      { $inc: { quantity: -Number(quantity) } }
+    );
+
+    // Record the return
+    const returnRecord = {
+      returnId: generate5DigitHex(),
+      productId,
+      productName: product.name,
+      quantity: Number(quantity),
+      reason: reason || 'Not specified',
+      timestamp: new Date()
+    };
+    
+    await unitDb.collection("returns").insertOne(returnRecord);
+
+    res.status(201).json({ success: true, returnRecord, message: "Return processed successfully" });
+  } catch (err) {
+    console.error("Error processing return:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
 // --- WAREHOUSES ---
 
 // Route to create a new warehouse

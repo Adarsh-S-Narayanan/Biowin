@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useParams } from 'react-router-dom';
-import { ShieldCheck, Stethoscope, Warehouse, Truck, ArrowLeft, LogIn, ShoppingBag, History, PlusCircle, Package, Trash2, Coins, TrendingUp, Layers, LogOut, Search, Edit2, CheckCircle, XCircle } from 'lucide-react';
+import { ShieldCheck, Stethoscope, Warehouse, Truck, ArrowLeft, LogIn, ShoppingBag, History, PlusCircle, Package, Trash2, Coins, TrendingUp, Layers, LogOut, Search, Edit2, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
 import DashboardLayout from './components/DashboardLayout';
 import AdminPageContent from './pages/AdminPage';
 import AdminUnitsPageContent from './pages/AdminUnitsPage';
@@ -521,6 +521,13 @@ const UnitPage = () => {
   const [billingSearchQuery, setBillingSearchQuery] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash'); // 'Cash' or 'UPI'
   
+  // Returns Form state
+  const [returns, setReturns] = useState([]);
+  const [returnProductId, setReturnProductId] = useState('');
+  const [returnQty, setReturnQty] = useState('');
+  const [returnReason, setReturnReason] = useState('');
+  const [returnMessage, setReturnMessage] = useState({ type: '', text: '' });
+  
   // Load session
   useEffect(() => {
     const isUnitAuth = sessionStorage.getItem('biowin_unit_auth') === 'true';
@@ -544,6 +551,7 @@ const UnitPage = () => {
       fetchLatestMetadata();
       fetchGlobalProducts();
       fetchDeliveries();
+      fetchReturns();
     }
   }, [isLoggedIn, unitData?.unitId]);
 
@@ -568,6 +576,48 @@ const UnitPage = () => {
       }
     } catch (err) {
       console.error("Error fetching deliveries:", err);
+    }
+  };
+
+  const fetchReturns = async () => {
+    if (!unitData) return;
+    try {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/units/${unitData.unitId}/returns`);
+      const data = await res.json();
+      if (data.success) {
+        setReturns(data.returns);
+      }
+    } catch (err) {
+      console.error("Error fetching returns:", err);
+    }
+  };
+
+  const handleReturnSubmit = async (e) => {
+    e.preventDefault();
+    setReturnMessage({ type: '', text: '' });
+    if (!returnProductId || !returnQty || Number(returnQty) <= 0) {
+      setReturnMessage({ type: 'error', text: 'Please select a product and enter a valid quantity' });
+      return;
+    }
+    try {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/units/${unitData.unitId}/returns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: returnProductId, quantity: Number(returnQty), reason: returnReason })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReturnMessage({ type: 'success', text: data.message });
+        setReturnProductId('');
+        setReturnQty('');
+        setReturnReason('');
+        fetchProducts();
+        fetchReturns();
+      } else {
+        setReturnMessage({ type: 'error', text: data.message || 'Failed to process return' });
+      }
+    } catch (err) {
+      setReturnMessage({ type: 'error', text: 'Server error' });
     }
   };
 
@@ -1037,6 +1087,7 @@ const UnitPage = () => {
             { tab: 'billing', Icon: ShoppingBag, label: 'Billing (POS)' },
             { tab: 'history', Icon: History, label: 'Sales History' },
             { tab: 'deliveries', Icon: Truck, label: 'Deliveries & Bills' },
+            { tab: 'returns', Icon: RotateCcw, label: 'Returns' },
           ].map(({ tab, Icon: NavIcon, label }) => {
             const isActive = activeTab === tab;
             return (
@@ -1796,6 +1847,119 @@ const UnitPage = () => {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'returns' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" style={{ animation: 'fadeInUp 0.4s ease-out both' }}>
+            {/* Returns History (Left Side) */}
+            <div className="lg:col-span-8 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col h-[calc(100vh-140px)]">
+              <div className="p-6 pb-4 border-b border-slate-100 shrink-0">
+                <h3 className="text-xl font-bold text-slate-800 m-0 text-left">Returns History</h3>
+              </div>
+              
+              <div className="p-6 pt-0 overflow-y-auto flex-grow custom-scrollbar">
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-sm border-b border-slate-200">
+                        <th className="py-4 px-5 font-semibold">Date</th>
+                        <th className="py-4 px-5 font-semibold">Product</th>
+                        <th className="py-4 px-5 font-semibold">Quantity</th>
+                        <th className="py-4 px-5 font-semibold">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {returns.length === 0 ? (
+                        <tr><td colSpan="4" className="py-10 text-center text-slate-500">No returns found.</td></tr>
+                      ) : returns.map((ret, idx) => (
+                        <tr key={idx} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
+                          <td className="py-4 px-5 text-slate-600 text-sm">{new Date(ret.timestamp).toLocaleString()}</td>
+                          <td className="py-4 px-5 font-semibold text-slate-800">{ret.productName}</td>
+                          <td className="py-4 px-5 text-slate-600 font-bold">{ret.quantity}</td>
+                          <td className="py-4 px-5 text-slate-600 text-sm">{ret.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Log Return (Right Side) */}
+            <div className="lg:col-span-4 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col h-[calc(100vh-140px)] sticky top-6">
+              <div className="p-5 border-b border-slate-100 bg-slate-50 rounded-t-xl text-left">
+                <h3 className="text-lg font-bold text-slate-800 m-0 flex items-center gap-2">
+                  <RotateCcw size={20} className="text-spice-dark" />
+                  Log Return
+                </h3>
+              </div>
+              
+              <div className="flex-grow overflow-y-auto p-5 text-left">
+                <p className="text-xs text-slate-400 mb-6">Select a product to return to the warehouse or write off.</p>
+                {returnMessage.text && (
+                  <div className={`p-4 rounded-lg mb-6 text-sm font-semibold border ${
+                    returnMessage.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
+                  }`}>
+                    {returnMessage.text}
+                  </div>
+                )}
+                
+                <form onSubmit={handleReturnSubmit} className="flex flex-col gap-5">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-bold text-slate-700">Product</label>
+                    <select
+                      value={returnProductId}
+                      onChange={(e) => setReturnProductId(e.target.value)}
+                      className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-spice-dark focus:ring-2 focus:ring-spice-dark/20 bg-white transition-all shadow-sm"
+                    >
+                      <option value="">-- Select Product --</option>
+                      {products.map(p => (
+                        <option key={p.productId} value={p.productId}>
+                          {p.name} (Stock: {p.quantity})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-bold text-slate-700">Quantity to Return</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={returnQty}
+                      onChange={(e) => setReturnQty(e.target.value)}
+                      placeholder="Enter quantity"
+                      className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-spice-dark focus:ring-2 focus:ring-spice-dark/20 transition-all shadow-sm"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-bold text-slate-700">Reason</label>
+                    <input
+                      type="text"
+                      value={returnReason}
+                      onChange={(e) => setReturnReason(e.target.value)}
+                      placeholder="e.g. Expired, Damaged, Surplus"
+                      className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-spice-dark focus:ring-2 focus:ring-spice-dark/20 transition-all shadow-sm"
+                    />
+                  </div>
+
+                  <div className="mt-4">
+                    <button 
+                      type="submit" 
+                      style={{
+                        background: 'linear-gradient(135deg, #1a4d3a 0%, #2ecc71 100%)',
+                        boxShadow: '0 4px 15px rgba(46,204,113,0.3)'
+                      }}
+                      className="w-full py-3.5 text-white font-black rounded-xl hover:opacity-90 hover:-translate-y-0.5 active:scale-95 transition-all cursor-pointer border-0 flex items-center justify-center gap-2 text-[1.05rem] tracking-wide"
+                    >
+                      <RotateCcw size={18} /> SUBMIT RETURN
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
           </div>
         )}
       </main>
