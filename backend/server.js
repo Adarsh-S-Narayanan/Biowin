@@ -515,6 +515,34 @@ app.post('/api/units/:unitId/returns', async (req, res) => {
 
 // --- WAREHOUSES ---
 
+// Route to get all unit stocks for warehouse dashboard
+app.get('/api/warehouses/unit-stocks', async (req, res) => {
+  try {
+    const db = client.db("Units");
+    const units = await db.collection("units_metadata").find({}, { projection: { password: 0 } }).toArray();
+    
+    const unitStocks = [];
+    for (const unit of units) {
+      const unitDb = client.db(`Unit_${unit.unitId}`);
+      // Handle the case where the unit's DB or stocks collection might not exist yet
+      const collections = await unitDb.listCollections({ name: "stocks" }).toArray();
+      let stocks = [];
+      if (collections.length > 0) {
+        stocks = await unitDb.collection("stocks").find({}).toArray();
+      }
+      unitStocks.push({
+        unitId: unit.unitId,
+        unitName: unit.name,
+        stocks: stocks
+      });
+    }
+    res.status(200).json({ success: true, unitStocks });
+  } catch (err) {
+    console.error("Error fetching unit stocks for warehouse:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
 // Route to create a new warehouse
 app.post('/api/warehouses', async (req, res) => {
   const { name, region, address, password, status } = req.body;

@@ -1967,6 +1967,174 @@ const UnitPage = () => {
   );
 };
 
+const WarehouseDashboardContent = () => {
+  const [unitStocks, setUnitStocks] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [expandedUnitId, setExpandedUnitId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    fetchUnitStocks();
+  }, []);
+
+  const fetchUnitStocks = async () => {
+    try {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/warehouses/unit-stocks');
+      const data = await res.json();
+      if (data.success) {
+        setUnitStocks(data.unitStocks);
+      }
+    } catch (err) {
+      console.error("Error fetching unit stocks:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleExpand = (unitId) => {
+    if (expandedUnitId === unitId) {
+      setExpandedUnitId(null);
+    } else {
+      setExpandedUnitId(unitId);
+    }
+  };
+
+  const filteredUnits = unitStocks.filter(u => 
+    u.unitName.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    u.unitId.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 m-8">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h3 className="text-xl font-bold text-slate-800 m-0">Units Stock Overview</h3>
+          <p className="text-sm text-slate-500 mt-1">Monitor low stock and drill down into unit inventories.</p>
+        </div>
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search units..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-spice-dark focus:ring-1 focus:ring-spice-dark w-64"
+          />
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center py-10 text-slate-500">Loading unit stock data...</div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {filteredUnits.length === 0 ? (
+            <div className="text-center py-8 text-slate-400">No units found.</div>
+          ) : (
+            filteredUnits.map((unit) => {
+              const lowStockItems = unit.stocks.filter(s => s.quantity > 0 && s.quantity <= 10);
+              const outOfStockItems = unit.stocks.filter(s => s.quantity <= 0);
+              const hasAlerts = lowStockItems.length > 0 || outOfStockItems.length > 0;
+              const isExpanded = expandedUnitId === unit.unitId;
+
+              return (
+                <div key={unit.unitId} className={`border rounded-xl overflow-hidden transition-all duration-300 ${isExpanded ? 'border-spice-dark/30 shadow-md' : 'border-slate-200 hover:border-spice-dark/50'}`}>
+                  {/* Unit Header */}
+                  <div 
+                    onClick={() => toggleExpand(unit.unitId)}
+                    className={`p-4 cursor-pointer flex justify-between items-center bg-white hover:bg-slate-50 transition-colors ${isExpanded ? 'bg-slate-50 border-b border-slate-100' : ''}`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-spice-dark text-white flex items-center justify-center shrink-0">
+                        <Layers size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-800 m-0 text-lg flex items-center gap-2">
+                          {unit.unitName}
+                          <span className="text-xs font-mono bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">#{unit.unitId}</span>
+                        </h4>
+                        <p className="text-xs text-slate-500 m-0 mt-0.5">Total Products: {unit.stocks.length}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-6">
+                      {/* Alerts Badge */}
+                      {hasAlerts ? (
+                        <div className="flex gap-2">
+                          {outOfStockItems.length > 0 && (
+                            <span className="flex items-center gap-1 bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">
+                              <XCircle size={14} /> {outOfStockItems.length} Out of Stock
+                            </span>
+                          )}
+                          {lowStockItems.length > 0 && (
+                            <span className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">
+                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                              {lowStockItems.length} Low Stock
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">
+                          <CheckCircle size={14} /> Healthy Stock
+                        </span>
+                      )}
+                      
+                      {/* Expand Icon */}
+                      <div className={`text-slate-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Drill Down Content */}
+                  {isExpanded && (
+                    <div className="p-0 bg-slate-50/50">
+                      {unit.stocks.length === 0 ? (
+                        <div className="p-6 text-center text-slate-500 text-sm">No stock data available for this unit.</div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-100/50 text-slate-500 text-xs uppercase tracking-wider">
+                                <th className="py-3 px-6 font-semibold">Product Name</th>
+                                <th className="py-3 px-6 font-semibold">Product ID</th>
+                                <th className="py-3 px-6 font-semibold">Price</th>
+                                <th className="py-3 px-6 font-semibold">Quantity</th>
+                                <th className="py-3 px-6 font-semibold">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {unit.stocks.sort((a, b) => a.quantity - b.quantity).map((item) => (
+                                <tr key={item.productId} className="border-b border-slate-100 last:border-0 hover:bg-white transition-colors">
+                                  <td className="py-3 px-6 font-semibold text-slate-800">{item.name}</td>
+                                  <td className="py-3 px-6 font-mono text-xs text-slate-400">#{item.productId}</td>
+                                  <td className="py-3 px-6 font-medium text-slate-600">₹{Number(item.price).toFixed(2)}</td>
+                                  <td className="py-3 px-6 font-bold text-slate-700">{item.quantity}</td>
+                                  <td className="py-3 px-6">
+                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                                      item.quantity > 10 ? 'bg-emerald-100 text-emerald-800' : 
+                                      item.quantity > 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                                    }`}>
+                                      {item.quantity > 10 ? 'In Stock' : item.quantity > 0 ? 'Low Stock' : 'Out of Stock'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const WarehousePage = ({ logout }) => {
   const navItems = [
     { label: 'Warehouse', icon: Warehouse, path: '/warehouse' },
@@ -1974,7 +2142,11 @@ const WarehousePage = ({ logout }) => {
   ];
   return (
     <DashboardLayout navItems={navItems} logout={logout} title="Warehouse" subtitle="Inventory Management">
-      <PageTemplate title="Warehouse Management" description="Inventory and stock controls." />
+      <div className="mb-6 px-8 pt-8">
+        <h1 className="text-3xl font-bold text-slate-800 m-0">Warehouse Management</h1>
+        <p className="text-slate-500 mt-1">Inventory and unit stock controls.</p>
+      </div>
+      <WarehouseDashboardContent />
     </DashboardLayout>
   );
 };
