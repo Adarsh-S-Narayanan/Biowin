@@ -6,7 +6,7 @@ const DashboardLayout = ({ children, navItems, logout, title = "Biowin", subtitl
   const location = useLocation();
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
       {/* Sidebar */}
       <aside className="w-[260px] bg-white border-r border-slate-200 flex flex-col py-6 px-4 flex-shrink-0">
         <div className="flex items-center gap-3 mb-8 px-2">

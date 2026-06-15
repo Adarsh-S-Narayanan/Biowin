@@ -34,6 +34,13 @@ async function run() {
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
+
+    // Create TTL index on Convoys database 'jobs' collection
+    await client.db("Convoys").collection("jobs").createIndex(
+      { "cancelledAt": 1 },
+      { expireAfterSeconds: 5184000 } // 60 days * 24h * 60m * 60s
+    );
+    console.log("TTL index for cancelled jobs created.");
   } catch (err) {
     console.error("Failed to connect to MongoDB:", err.message);
   }
@@ -349,7 +356,7 @@ app.delete('/api/units/:unitId/products/:productId', async (req, res) => {
 // Process a sale (billing)
 app.post('/api/units/:unitId/sell', async (req, res) => {
   const { unitId } = req.params;
-  const { items, paymentMethod } = req.body; // Array of { productName, quantity, price } and paymentMethod string
+  const { items, paymentMethod, isOnline, onlineOrderId } = req.body; // Array of { productName, quantity, price } and paymentMethod string
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ success: false, message: "No items provided for sale" });
@@ -364,25 +371,26 @@ app.post('/api/units/:unitId/sell', async (req, res) => {
 
     const unitDb = client.db(`Unit_${unitId}`);
 
-    // 1. Verify stock before proceeding
-    for (const item of items) {
-      const product = await unitDb.collection("stocks").findOne({
-        name: item.productName
-      });
-      if (!product || product.quantity < item.quantity) {
-        return res.status(400).json({
-          success: false,
-          message: `Insufficient stock for ${item.productName}. Available: ${product ? product.quantity : 0}`
+    // 1 & 2. Verify and reduce stock only if it's NOT an online order
+    if (!isOnline) {
+      for (const item of items) {
+        const product = await unitDb.collection("stocks").findOne({
+          name: item.productName
         });
+        if (!product || product.quantity < item.quantity) {
+          return res.status(400).json({
+            success: false,
+            message: `Insufficient stock for ${item.productName}. Available: ${product ? product.quantity : 0}`
+          });
+        }
       }
-    }
 
-    // 2. Reduce stock
-    for (const item of items) {
-      await unitDb.collection("stocks").updateOne(
-        { name: item.productName },
-        { $inc: { quantity: -item.quantity } }
-      );
+      for (const item of items) {
+        await unitDb.collection("stocks").updateOne(
+          { name: item.productName },
+          { $inc: { quantity: -item.quantity } }
+        );
+      }
     }
 
     // 3. Record the sale document
@@ -400,9 +408,16 @@ app.post('/api/units/:unitId/sell', async (req, res) => {
       timestamp: new Date(),
       items,
       totalAmount,
-      paymentMethod: paymentMethod || 'Cash'
+      paymentMethod: paymentMethod || 'Cash',
+      isOnline: isOnline || false,
+      onlineOrderId: onlineOrderId || null
     };
     await unitDb.collection("sales").insertOne(saleRecord);
+
+    // If it was an online order, remove it from reservations
+    if (onlineOrderId) {
+      await unitDb.collection("reservation").deleteOne({ orderId: onlineOrderId });
+    }
 
     // 4. Update unit's metadata
     await db.collection("units_metadata").updateOne(
@@ -418,6 +433,68 @@ app.post('/api/units/:unitId/sell', async (req, res) => {
     res.status(200).json({ success: true, sale: saleRecord, message: "Sale processed successfully" });
   } catch (err) {
     console.error("Error processing sale:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Add a reservation
+app.post('/api/units/:unitId/reservations', async (req, res) => {
+  const { unitId } = req.params;
+  const { customerEmail, customerName, products, amountToBePaid, orderId } = req.body;
+
+  if (!customerEmail || !customerName || !products || products.length === 0 || amountToBePaid === undefined || !orderId) {
+    return res.status(400).json({ success: false, message: "Missing required reservation fields including orderId" });
+  }
+
+  try {
+    const db = client.db("Units");
+    const unit = await db.collection("units_metadata").findOne({ unitId });
+    if (!unit) {
+      return res.status(404).json({ success: false, message: "Unit not found" });
+    }
+    const unitDb = client.db(`Unit_${unitId}`);
+
+    // Check if orderId already exists
+    const check = await unitDb.collection("reservation").findOne({ orderId });
+    if (check) {
+      return res.status(400).json({ success: false, message: "Order ID already exists" });
+    }
+
+    const reservationRecord = {
+      orderId,
+      customerEmail,
+      customerName,
+      products,
+      amountToBePaid,
+      status: 'Pending',
+      timestamp: new Date()
+    };
+    await unitDb.collection("reservation").insertOne(reservationRecord);
+
+    res.status(201).json({ success: true, reservation: reservationRecord, message: "Reservation created successfully" });
+  } catch (err) {
+    console.error("Error creating reservation:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Get reservations for a unit
+app.get('/api/units/:unitId/reservations', async (req, res) => {
+  const { unitId } = req.params;
+  try {
+    const db = client.db("Units");
+    const unit = await db.collection("units_metadata").findOne({ unitId });
+    if (!unit) {
+      return res.status(404).json({ success: false, message: "Unit not found" });
+    }
+    const unitDb = client.db(`Unit_${unitId}`);
+    const reservations = await unitDb.collection("reservation")
+      .find({})
+      .sort({ timestamp: -1 })
+      .toArray();
+    res.status(200).json({ success: true, reservations });
+  } catch (err) {
+    console.error("Error fetching unit reservations:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -787,7 +864,7 @@ app.get('/api/warehouses/products', async (req, res) => {
 
 // Add new product to warehouse collection
 app.post('/api/warehouses/products', async (req, res) => {
-  const { name, price, expiryDate } = req.body;
+  const { name, price } = req.body;
   
   if (!name || price === undefined) {
     return res.status(400).json({ success: false, message: "Missing required fields" });
@@ -809,7 +886,6 @@ app.post('/api/warehouses/products', async (req, res) => {
       productId: newId,
       name: normalizedName,
       price: Number(price),
-      expiryDate: expiryDate ? new Date(expiryDate) : null,
       isAvailable: true,
       createdAt: new Date()
     };
@@ -825,7 +901,7 @@ app.post('/api/warehouses/products', async (req, res) => {
 // Edit a warehouse product
 app.put('/api/warehouses/products/:productId', async (req, res) => {
   const { productId } = req.params;
-  const { name, price, isAvailable, expiryDate } = req.body;
+  const { name, price, isAvailable } = req.body;
   
   try {
     const db = client.db("Warehouses");
@@ -833,7 +909,6 @@ app.put('/api/warehouses/products/:productId', async (req, res) => {
     if (name !== undefined) updateData.name = name.trim();
     if (price !== undefined) updateData.price = Number(price);
     if (isAvailable !== undefined) updateData.isAvailable = Boolean(isAvailable);
-    if (expiryDate !== undefined) updateData.expiryDate = expiryDate ? new Date(expiryDate) : null;
 
     const result = await db.collection("products").updateOne(
       { productId },
@@ -909,6 +984,34 @@ app.get('/api/convoys/:convoyId/jobs', async (req, res) => {
     res.status(200).json({ success: true, jobs });
   } catch (err) {
     console.error("Error fetching jobs:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Cancel a job and revert its pending dispatches
+app.put('/api/convoys/:convoyId/jobs/:jobId/cancel', async (req, res) => {
+  const { convoyId, jobId } = req.params;
+  try {
+    const db = client.db("Convoys");
+    const job = await db.collection("jobs").findOne({ jobId });
+    if (!job) return res.status(404).json({ success: false, message: "Job not found" });
+
+    // Revert global requests to Pending
+    const warehouseDb = client.db("Warehouses");
+    await warehouseDb.collection("requests").updateMany(
+      { jobId: jobId, status: 'Dispatched' },
+      { $set: { status: 'Pending' }, $unset: { jobId: "", dispatchedBy: "", dispatchedAt: "" } }
+    );
+
+    // Update job status
+    await db.collection("jobs").updateOne(
+      { jobId },
+      { $set: { status: 'Cancelled', cancelledAt: new Date() } }
+    );
+
+    res.status(200).json({ success: true, message: "Job ended and pending dispatches reverted" });
+  } catch (err) {
+    console.error("Error cancelling job:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -1016,18 +1119,28 @@ app.put('/api/convoys/:convoyId/jobs/:jobId/deliveries/:unitId/deliver', async (
     // Update Job Delivery Status
     job.deliveries[deliveryIndex].status = 'Delivered';
     job.deliveries[deliveryIndex].billGenerated = true;
+    job.deliveries[deliveryIndex].deliveredAt = new Date();
 
     // Check if all deliveries are completed to mark job as completed
-    const allDelivered = job.deliveries.every(d => d.status === 'Delivered');
+    const allCompleted = job.deliveries.every(d => d.status === 'Delivered');
+    if (allCompleted) {
+      job.status = 'Completed';
+    }
 
     await db.collection("jobs").updateOne(
       { jobId },
-      { $set: { deliveries: job.deliveries, status: allDelivered ? 'Completed' : 'Started' } }
+      { $set: { deliveries: job.deliveries, status: job.status } }
     );
 
-    res.status(200).json({ success: true, message: "Items delivered and bill generated successfully" });
+    // Also remove associated global requests
+    const warehouseDb = client.db("Warehouses");
+    await warehouseDb.collection("requests").deleteMany(
+      { unitId, status: 'Dispatched' }
+    );
+
+    res.status(200).json({ success: true, message: "Delivery marked as completed and billed", job });
   } catch (err) {
-    console.error("Error marking delivery:", err);
+    console.error("Error marking delivery as completed:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -1073,6 +1186,329 @@ app.get('/api/units/:unitId/deliveries', async (req, res) => {
     res.status(200).json({ success: true, bills });
   } catch (err) {
     console.error("Error fetching unit bills:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// --- UNIT REQUESTS & DISPATCH FLOW ---
+
+// Create a stock request from a unit
+app.post('/api/units/:unitId/requests', async (req, res) => {
+  const { unitId } = req.params;
+  const { productId, quantity } = req.body;
+
+  if (!productId || quantity === undefined || quantity <= 0) {
+    return res.status(400).json({ success: false, message: "Valid Product ID and quantity required" });
+  }
+
+  try {
+    const db = client.db("Units");
+    const unit = await db.collection("units_metadata").findOne({ unitId });
+    if (!unit) {
+      return res.status(404).json({ success: false, message: "Unit not found" });
+    }
+
+    const warehouseDb = client.db("Warehouses");
+    const globalProduct = await warehouseDb.collection("products").findOne({ productId });
+    if (!globalProduct) {
+      return res.status(404).json({ success: false, message: "Product not found in warehouse catalog" });
+    }
+
+    let requestId;
+    let isUnique = false;
+    while (!isUnique) {
+      requestId = generate5DigitHex();
+      const check = await warehouseDb.collection("requests").findOne({ requestId });
+      if (!check) isUnique = true;
+    }
+
+    const newRequest = {
+      requestId,
+      unitId: unit.unitId,
+      unitName: unit.name,
+      productId: globalProduct.productId,
+      productName: globalProduct.name,
+      price: globalProduct.price,
+      quantity: Number(quantity),
+      status: 'Pending', // Pending, Dispatched, Delivered
+      createdAt: new Date()
+    };
+
+    await warehouseDb.collection("requests").insertOne(newRequest);
+    res.status(201).json({ success: true, request: newRequest, message: "Stock request submitted successfully" });
+  } catch (err) {
+    console.error("Error creating stock request:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Get all unit requests for warehouse
+app.get('/api/warehouses/requests', async (req, res) => {
+  try {
+    const warehouseDb = client.db("Warehouses");
+    const requests = await warehouseDb.collection("requests").find({}).sort({ createdAt: -1 }).toArray();
+    res.status(200).json({ success: true, requests });
+  } catch (err) {
+    console.error("Error fetching warehouse requests:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Get requests specific to a unit
+app.get('/api/units/:unitId/requests', async (req, res) => {
+  const { unitId } = req.params;
+  try {
+    const warehouseDb = client.db("Warehouses");
+    const requests = await warehouseDb.collection("requests").find({ unitId }).sort({ createdAt: -1 }).toArray();
+    res.status(200).json({ success: true, requests });
+  } catch (err) {
+    console.error("Error fetching unit requests:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Convoy dispatch a request
+app.put('/api/convoys/requests/:requestId/dispatch', async (req, res) => {
+  const { requestId } = req.params;
+  const { convoyId } = req.body;
+  try {
+    const warehouseDb = client.db("Warehouses");
+    const request = await warehouseDb.collection("requests").findOne({ requestId });
+    if (!request) {
+      return res.status(404).json({ success: false, message: "Request not found" });
+    }
+    
+    if (request.status !== 'Pending') {
+      return res.status(400).json({ success: false, message: "Request is not pending" });
+    }
+
+    await warehouseDb.collection("requests").updateOne(
+      { requestId },
+      { 
+        $set: { 
+          status: 'Dispatched',
+          dispatchedBy: convoyId || 'Unknown',
+          dispatchedAt: new Date()
+        } 
+      }
+    );
+
+    res.status(200).json({ success: true, message: "Request dispatched successfully" });
+  } catch (err) {
+    console.error("Error dispatching request:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Convoy deliver a request (updates unit stock)
+app.put('/api/convoys/requests/:requestId/deliver', async (req, res) => {
+  const { requestId } = req.params;
+  try {
+    const warehouseDb = client.db("Warehouses");
+    const request = await warehouseDb.collection("requests").findOne({ requestId });
+    if (!request) {
+      return res.status(404).json({ success: false, message: "Request not found" });
+    }
+    
+    if (request.status !== 'Dispatched') {
+      return res.status(400).json({ success: false, message: "Request must be dispatched first" });
+    }
+
+    // Update Unit Stock
+    const unitDb = client.db(`Unit_${request.unitId}`);
+    const existingProduct = await unitDb.collection("stocks").findOne({ productId: request.productId });
+    
+    if (existingProduct) {
+      await unitDb.collection("stocks").updateOne(
+        { _id: existingProduct._id },
+        { 
+          $inc: { quantity: Number(request.quantity) },
+          $set: { price: request.price, name: request.productName }
+        }
+      );
+    } else {
+      await unitDb.collection("stocks").insertOne({
+        productId: request.productId,
+        name: request.productName,
+        quantity: Number(request.quantity),
+        price: request.price,
+        createdAt: new Date()
+      });
+    }
+
+    // Remove Request after Delivery
+    await warehouseDb.collection("requests").deleteOne(
+      { requestId }
+    );
+
+    res.status(200).json({ success: true, message: "Request delivered and stock updated successfully" });
+  } catch (err) {
+    console.error("Error delivering request:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Update quantity of an existing pending request
+app.put('/api/requests/:requestId', async (req, res) => {
+  const { requestId } = req.params;
+  const { quantity } = req.body;
+  if (quantity === undefined || quantity < 0) {
+    return res.status(400).json({ success: false, message: "Valid quantity required" });
+  }
+  try {
+    const warehouseDb = client.db("Warehouses");
+    const request = await warehouseDb.collection("requests").findOne({ requestId });
+    if (!request) return res.status(404).json({ success: false, message: "Request not found" });
+    if (request.status !== 'Pending') return res.status(400).json({ success: false, message: "Can only update pending requests" });
+
+    if (quantity === 0) {
+      await warehouseDb.collection("requests").deleteOne({ requestId });
+      return res.status(200).json({ success: true, message: "Request removed" });
+    }
+
+    await warehouseDb.collection("requests").updateOne({ requestId }, { $set: { quantity: Number(quantity) } });
+    res.status(200).json({ success: true, message: "Quantity updated" });
+  } catch (err) {
+    console.error("Error updating quantity:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Delete a pending request
+app.delete('/api/requests/:requestId', async (req, res) => {
+  const { requestId } = req.params;
+  try {
+    const warehouseDb = client.db("Warehouses");
+    const request = await warehouseDb.collection("requests").findOne({ requestId });
+    if (!request) return res.status(404).json({ success: false, message: "Request not found" });
+    if (request.status !== 'Pending') return res.status(400).json({ success: false, message: "Can only delete pending requests" });
+    
+    await warehouseDb.collection("requests").deleteOne({ requestId });
+    res.status(200).json({ success: true, message: "Request deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting request:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Batch dispatch all pending requests for a unit and link to Job
+app.put('/api/convoys/units/:unitId/dispatch', async (req, res) => {
+  const { unitId } = req.params;
+  const { convoyId, jobId } = req.body;
+  
+  if (!jobId) {
+    return res.status(400).json({ success: false, message: "A Job ID is required to dispatch requests" });
+  }
+
+  try {
+    const warehouseDb = client.db("Warehouses");
+    
+    // Find pending requests to extract items for the Job delivery
+    const pendingRequests = await warehouseDb.collection("requests").find({ unitId, status: 'Pending' }).toArray();
+    if (pendingRequests.length === 0) {
+      return res.status(400).json({ success: false, message: "No pending requests found for this unit" });
+    }
+
+    const items = pendingRequests.map(r => ({
+      productId: r.productId,
+      name: r.productName,
+      quantity: r.quantity,
+      price: r.price
+    }));
+
+    // Update global requests status to Dispatched
+    const result = await warehouseDb.collection("requests").updateMany(
+      { unitId, status: 'Pending' },
+      { 
+        $set: { 
+          status: 'Dispatched',
+          dispatchedBy: convoyId || 'Unknown',
+          dispatchedAt: new Date(),
+          jobId: jobId // link to job
+        } 
+      }
+    );
+
+    // Add delivery to Job
+    const convoysDb = client.db("Convoys");
+    const job = await convoysDb.collection("jobs").findOne({ jobId });
+    if (job) {
+      const newDelivery = {
+        unitId,
+        unitName: pendingRequests[0].unitName,
+        items,
+        status: 'Pending', // Delivery status is pending until physically delivered
+        billGenerated: false,
+        paymentCompleted: false,
+        totalAmount: items.reduce((sum, item) => sum + (item.quantity * item.price), 0),
+        addedAt: new Date()
+      };
+      
+      const existingDeliveryIndex = job.deliveries.findIndex(d => d.unitId === unitId && d.status === 'Pending');
+      let updatedDeliveries = [...job.deliveries];
+      if (existingDeliveryIndex >= 0) {
+        updatedDeliveries[existingDeliveryIndex] = newDelivery;
+      } else {
+        updatedDeliveries.push(newDelivery);
+      }
+      
+      const newTotalStock = updatedDeliveries.reduce((total, d) => {
+        let dStock = 0;
+        d.items.forEach(it => dStock += Number(it.quantity));
+        return total + dStock;
+      }, 0);
+
+      await convoysDb.collection("jobs").updateOne(
+        { jobId },
+        { $set: { deliveries: updatedDeliveries, totalStock: newTotalStock } }
+      );
+    }
+
+    res.status(200).json({ success: true, modifiedCount: result.modifiedCount, message: "Requests dispatched and added to job" });
+  } catch (err) {
+    console.error("Error batch dispatching:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Batch deliver all dispatched requests for a unit
+app.put('/api/convoys/units/:unitId/deliver', async (req, res) => {
+  const { unitId } = req.params;
+  try {
+    const warehouseDb = client.db("Warehouses");
+    const requests = await warehouseDb.collection("requests").find({ unitId, status: 'Dispatched' }).toArray();
+    if (requests.length === 0) {
+      return res.status(400).json({ success: false, message: "No dispatched requests found for unit" });
+    }
+
+    const unitDb = client.db(`Unit_${unitId}`);
+    for (const request of requests) {
+      const existingProduct = await unitDb.collection("stocks").findOne({ productId: request.productId });
+      if (existingProduct) {
+        await unitDb.collection("stocks").updateOne(
+          { _id: existingProduct._id },
+          { 
+            $inc: { quantity: Number(request.quantity) },
+            $set: { price: request.price, name: request.productName }
+          }
+        );
+      } else {
+        await unitDb.collection("stocks").insertOne({
+          productId: request.productId,
+          name: request.productName,
+          quantity: Number(request.quantity),
+          price: request.price,
+          createdAt: new Date()
+        });
+      }
+      
+      await warehouseDb.collection("requests").deleteOne(
+        { requestId: request.requestId }
+      );
+    }
+    res.status(200).json({ success: true, message: "Unit deliveries processed" });
+  } catch (err) {
+    console.error("Error batch delivering:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });

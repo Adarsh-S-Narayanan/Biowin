@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useParams } from 'react-router-dom';
-import { ShieldCheck, Stethoscope, Warehouse, Truck, ArrowLeft, LogIn, ShoppingBag, History, PlusCircle, Package, Trash2, Coins, TrendingUp, Layers, LogOut, Search, Edit2, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
+import { ShieldCheck, Stethoscope, Warehouse, Truck, ArrowLeft, LogIn, ShoppingBag, History, PlusCircle, Package, Trash2, Coins, TrendingUp, Layers, LogOut, Search, Edit2, CheckCircle, XCircle, RotateCcw, Briefcase, Globe } from 'lucide-react';
 import DashboardLayout from './components/DashboardLayout';
 import AdminPageContent from './pages/AdminPage';
 import AdminUnitsPageContent from './pages/AdminUnitsPage';
@@ -504,14 +504,15 @@ const UnitPage = () => {
   const [viewBillData, setViewBillData] = useState(null); // bill object | null
   
   // Stock Form state
-  const [productQty, setProductQty] = useState('');
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [selectedProductsForRequest, setSelectedProductsForRequest] = useState({});
   const [stockMessage, setStockMessage] = useState({ type: '', text: '' });
   const [stockSearchQuery, setStockSearchQuery] = useState('');
-  const [selectedStockProduct, setSelectedStockProduct] = useState('');
   const [globalProducts, setGlobalProducts] = useState([]);
   const [globalProductSearchQuery, setGlobalProductSearchQuery] = useState('');
   const [editingStockProduct, setEditingStockProduct] = useState(null);
   const [editingStockPrice, setEditingStockPrice] = useState("");
+  const [unitRequests, setUnitRequests] = useState([]);
 
   // Billing Form / Cart state
   const [cart, setCart] = useState([]);
@@ -519,7 +520,10 @@ const UnitPage = () => {
   const [billQty, setBillQty] = useState('');
   const [billingMessage, setBillingMessage] = useState({ type: '', text: '' });
   const [billingSearchQuery, setBillingSearchQuery] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('Cash'); // 'Cash' or 'UPI'
+  const [paymentMethod, setPaymentMethod] = useState('Cash'); // 'Cash', 'UPI', or 'Online'
+  const [isOnlineCodeModalOpen, setIsOnlineCodeModalOpen] = useState(false);
+  const [onlineCode, setOnlineCode] = useState('');
+  const [onlineOrderToFulfill, setOnlineOrderToFulfill] = useState(null);
   
   // Returns Form state
   const [returns, setReturns] = useState([]);
@@ -527,6 +531,10 @@ const UnitPage = () => {
   const [returnQty, setReturnQty] = useState('');
   const [returnReason, setReturnReason] = useState('');
   const [returnMessage, setReturnMessage] = useState({ type: '', text: '' });
+  
+  // Online Orders state
+  const [onlineOrderTab, setOnlineOrderTab] = useState('new'); // 'new' or 'history'
+  const [onlineOrders, setOnlineOrders] = useState([]);
   
   // Load session
   useEffect(() => {
@@ -552,8 +560,36 @@ const UnitPage = () => {
       fetchGlobalProducts();
       fetchDeliveries();
       fetchReturns();
+      fetchUnitRequests();
+      fetchOnlineOrders();
     }
   }, [isLoggedIn, unitData?.unitId]);
+
+  const fetchOnlineOrders = async () => {
+    if (!unitData) return;
+    try {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/units/${unitData.unitId}/reservations`);
+      const data = await res.json();
+      if (data.success) {
+        setOnlineOrders(data.reservations || []);
+      }
+    } catch (err) {
+      console.error("Error fetching online orders:", err);
+    }
+  };
+
+  const fetchUnitRequests = async () => {
+    if (!unitData) return;
+    try {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/units/${unitData.unitId}/requests`);
+      const data = await res.json();
+      if (data.success) {
+        setUnitRequests(data.requests);
+      }
+    } catch (err) {
+      console.error("Error fetching unit requests:", err);
+    }
+  };
 
   const fetchGlobalProducts = async () => {
     try {
@@ -696,35 +732,47 @@ const UnitPage = () => {
     setIsLoggedIn(false);
   };
 
-  const handleAddStock = async (e) => {
+  const handleRequestStock = async (e) => {
     e.preventDefault();
     setStockMessage({ type: '', text: '' });
     
-    if (!selectedStockProduct) {
-      setStockMessage({ type: 'error', text: 'Please select a product from the global catalog' });
+    const selectedProductIds = Object.keys(selectedProductsForRequest);
+    if (selectedProductIds.length === 0) {
+      setStockMessage({ type: 'error', text: 'Please select at least one product' });
       return;
     }
 
-    if (!productQty || Number(productQty) <= 0) {
-      setStockMessage({ type: 'error', text: 'Please enter a valid quantity' });
+    const requestsToMake = selectedProductIds.map(productId => {
+      const quantity = Number(selectedProductsForRequest[productId]);
+      if (!quantity || quantity <= 0) return null;
+      return { productId, quantity };
+    }).filter(Boolean);
+
+    if (requestsToMake.length === 0) {
+      setStockMessage({ type: 'error', text: 'Please enter a valid quantity for selected products' });
       return;
     }
 
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/units/${unitData.unitId}/products`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: selectedStockProduct, quantity: Number(productQty) })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setStockMessage({ type: 'success', text: data.message });
-        setProductQty('');
-        setSelectedStockProduct('');
+      const promises = requestsToMake.map(reqData => 
+        fetch((import.meta.env.VITE_API_URL || '') + `/api/units/${unitData.unitId}/requests`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reqData)
+        }).then(r => r.json())
+      );
+
+      const results = await Promise.all(promises);
+      const allSuccess = results.every(r => r.success);
+
+      if (allSuccess) {
+        setStockMessage({ type: 'success', text: "All stock requests submitted successfully" });
+        setSelectedProductsForRequest({});
         setGlobalProductSearchQuery('');
-        fetchProducts();
+        setIsRequestModalOpen(false);
+        fetchUnitRequests();
       } else {
-        setStockMessage({ type: 'error', text: data.message || 'Failed to stock up' });
+        setStockMessage({ type: 'error', text: 'Some or all requests failed to submit' });
       }
     } catch (err) {
       setStockMessage({ type: 'error', text: 'Server error' });
@@ -822,13 +870,19 @@ const UnitPage = () => {
       const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/units/${unitData.unitId}/sell`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: cart, paymentMethod })
+        body: JSON.stringify({ 
+          items: cart, 
+          paymentMethod,
+          isOnline: !!onlineOrderToFulfill,
+          onlineOrderId: onlineOrderToFulfill
+        })
       });
       const data = await res.json();
       if (data.success) {
         setBillingMessage({ type: 'success', text: 'Billing completed successfully!' });
         setCart([]);
         setPaymentMethod('Cash');
+        setOnlineOrderToFulfill(null);
         fetchProducts();
         fetchSales();
         fetchLatestMetadata();
@@ -1040,7 +1094,7 @@ const UnitPage = () => {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
       <aside className="w-[260px] bg-white border-r border-slate-200 flex flex-col py-6 px-4 flex-shrink-0">
         <div className="flex items-center gap-3 mb-8 px-2">
           <div className="bg-spice-dark text-white w-10 h-10 rounded-lg flex items-center justify-center">
@@ -1085,6 +1139,7 @@ const UnitPage = () => {
           {[
             { tab: 'stock', Icon: Package, label: 'Stock in Hand' },
             { tab: 'billing', Icon: ShoppingBag, label: 'Billing (POS)' },
+            { tab: 'online_orders', Icon: Globe, label: 'Online Orders' },
             { tab: 'history', Icon: History, label: 'Sales History' },
             { tab: 'deliveries', Icon: Truck, label: 'Deliveries & Bills' },
             { tab: 'returns', Icon: RotateCcw, label: 'Returns' },
@@ -1206,24 +1261,70 @@ const UnitPage = () => {
         </div>
 
         {activeTab === 'stock' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-              <div className="flex justify-between items-center mb-4">
+          <div className="flex flex-col gap-8">
+            <div className="flex flex-col gap-8">
+              {/* Requests Section */}
+              {unitRequests.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                  <h3 className="text-lg font-semibold text-slate-800 mt-0 mb-4">Stock Requests</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                          <th className="py-2 px-4">Request ID</th>
+                          <th className="py-2 px-4">Product Name</th>
+                          <th className="py-2 px-4">Quantity</th>
+                          <th className="py-2 px-4">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unitRequests.map(req => (
+                          <tr key={req.requestId} className="border-b border-slate-50 text-slate-600">
+                            <td className="py-2.5 px-4 font-mono text-xs text-slate-400">{req.requestId}</td>
+                            <td className="py-2.5 px-4 font-semibold text-slate-700">{req.productName}</td>
+                            <td className="py-2.5 px-4">{req.quantity}</td>
+                            <td className="py-2.5 px-4">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                req.status === 'Pending' ? 'bg-amber-100 text-amber-800' :
+                                req.status === 'Dispatched' ? 'bg-blue-100 text-blue-800' :
+                                'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                {req.status === 'Dispatched' ? 'Incoming' : req.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold text-slate-800 mt-0 mb-0">Stock in Hand</h3>
-                <div className="relative">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search stock..."
-                    value={stockSearchQuery}
-                    onChange={(e) => setStockSearchQuery(e.target.value)}
-                    className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-spice-dark focus:ring-1 focus:ring-spice-dark"
-                  />
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search stock..."
+                      value={stockSearchQuery}
+                      onChange={(e) => setStockSearchQuery(e.target.value)}
+                      className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-spice-dark focus:ring-1 focus:ring-spice-dark"
+                    />
+                  </div>
+                  <button 
+                    onClick={() => setIsRequestModalOpen(true)}
+                    className="flex items-center gap-2 bg-spice-dark text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-spice-darker transition-colors cursor-pointer border-0"
+                  >
+                    <PlusCircle size={16} /> Request Stock
+                  </button>
                 </div>
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto overflow-y-auto max-h-[500px]">
                 <table className="w-full border-collapse">
-                  <thead>
+                  <thead className="sticky top-0 bg-white z-10 shadow-sm">
                     <tr className="border-b border-slate-100 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
                       <th className="py-3 px-4">ID</th>
                       <th className="py-3 px-4">Product Name</th>
@@ -1312,98 +1413,9 @@ const UnitPage = () => {
                 </table>
               </div>
             </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 h-fit text-left">
-              <h3 className="text-lg font-bold text-slate-800 mb-1 mt-0">Stock Up / Add Product</h3>
-              <p className="text-xs text-slate-400 mb-4">Select a product from the official global catalog to stock up.</p>
-              {stockMessage.text && (
-                <div className={`p-3 rounded-lg mb-4 text-sm font-medium ${
-                  stockMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                }`}>
-                  {stockMessage.text}
-                </div>
-              )}
-              
-              <form onSubmit={handleAddStock} className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2 text-left">
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-semibold text-slate-600">Choose Official Product</label>
-                    {selectedStockProduct && (
-                      <button 
-                        type="button" 
-                        onClick={() => setSelectedStockProduct('')}
-                        className="text-[10px] font-bold text-red-500 hover:underline cursor-pointer border-0 bg-transparent"
-                      >
-                        Clear Selection
-                      </button>
-                    )}
-                  </div>
-                  
-                  {/* Search Input for global products */}
-                  <div className="relative">
-                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Search official products..."
-                      value={globalProductSearchQuery}
-                      onChange={(e) => setGlobalProductSearchQuery(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs outline-none focus:border-spice-dark focus:ring-1 focus:ring-spice-dark"
-                    />
-                  </div>
-                  
-                  {/* Global Products List */}
-                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-inner bg-slate-50/50">
-                    <div className="max-h-[220px] overflow-y-auto divide-y divide-slate-100">
-                      {globalProducts.filter(p => p.name.toLowerCase().includes(globalProductSearchQuery.toLowerCase()) || (p.productId && p.productId.toLowerCase().includes(globalProductSearchQuery.toLowerCase()))).length === 0 ? (
-                        <div className="p-4 text-center text-slate-400 text-sm">No products found.</div>
-                      ) : globalProducts.filter(p => p.name.toLowerCase().includes(globalProductSearchQuery.toLowerCase()) || (p.productId && p.productId.toLowerCase().includes(globalProductSearchQuery.toLowerCase()))).map(p => {
-                        const isSelected = selectedStockProduct === p.productId;
-                        return (
-                          <button
-                            key={p.productId}
-                            type="button"
-                            onClick={() => setSelectedStockProduct(p.productId)}
-                            className={`w-full text-left p-3 flex justify-between items-center transition-all border-0 cursor-pointer ${
-                              isSelected 
-                                ? 'bg-orange-50 border-l-4 border-amber-600' 
-                                : 'bg-white hover:bg-slate-50 border-l-4 border-transparent'
-                            }`}
-                          >
-                            <div className="flex flex-col">
-                              <span className="font-bold text-slate-800 text-sm">{p.name}</span>
-                              <span className="text-[10px] font-mono text-slate-400">ID: #{p.productId}</span>
-                            </div>
-                            <div className={`font-bold text-sm px-2.5 py-1 rounded transition-colors ${
-                              isSelected ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-800'
-                            }`}>
-                              ₹{Number(p.price).toFixed(2)}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex flex-col gap-1.5 text-left">
-                  <label className="text-sm font-semibold text-slate-600">Quantity to Stock</label>
-                  <input 
-                    type="number"
-                    required
-                    value={productQty}
-                    onChange={(e) => setProductQty(e.target.value)}
-                    placeholder="Enter quantity (e.g. 100)"
-                    className="px-3.5 py-2.5 border border-slate-200 rounded-lg outline-none focus:border-spice-dark focus:ring-2 focus:ring-spice-dark/10"
-                  />
-                </div>
-                <button type="submit" className="bg-spice-dark hover:bg-spice-darker text-white rounded-lg py-3 font-semibold flex items-center justify-center gap-2 mt-2 transition-all cursor-pointer border-0 active:scale-[0.98]">
-                  <PlusCircle size={18} /> Add to Stock
-                </button>
-              </form>
-            </div>
           </div>
+        </div>
         )}
-
         {activeTab === 'billing' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Products Grid (Left Side - POS Style) */}
@@ -1551,6 +1563,22 @@ const UnitPage = () => {
                     >
                       <span style={{ fontSize: '0.75rem', fontWeight: 900, letterSpacing: '-0.02em' }}>UPI</span> Pay
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsOnlineCodeModalOpen(true)}
+                      style={{
+                        flex: 1, padding: '0.625rem 0.75rem',
+                        borderRadius: '10px', fontWeight: 700, fontSize: '0.875rem',
+                        border: paymentMethod === 'Online' ? '2px solid #f59e0b' : '1.5px solid #e2e8f0',
+                        background: paymentMethod === 'Online' ? 'linear-gradient(135deg, rgba(245,158,11,0.1) 0%, rgba(217,119,6,0.08) 100%)' : '#fff',
+                        color: paymentMethod === 'Online' ? '#b45309' : '#64748b',
+                        cursor: 'pointer', transition: 'all 0.2s ease',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                        boxShadow: paymentMethod === 'Online' ? '0 2px 8px rgba(245,158,11,0.2)' : 'none',
+                      }}
+                    >
+                      <Globe size={14} /> Online
+                    </button>
                   </div>
                 </div>
                 <div className="flex justify-between items-center mb-6 pt-4 border-t border-slate-200">
@@ -1588,6 +1616,176 @@ const UnitPage = () => {
                 </button>
               </div>
             </div>
+
+            {/* Online Payment Code Modal */}
+            {isOnlineCodeModalOpen && (
+              <div
+                style={{
+                  position: 'fixed', inset: 0,
+                  background: 'rgba(15,23,42,0.65)',
+                  backdropFilter: 'blur(6px)',
+                  zIndex: 60,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '1.5rem',
+                }}
+              >
+                <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl" style={{ animation: 'fadeInUp 0.3s ease-out both' }}>
+                  <h3 className="text-xl font-bold text-slate-800 mb-4 text-center m-0">Enter 5-Digit Code</h3>
+                  <input
+                    type="text"
+                    maxLength={5}
+                    placeholder="e.g. 12345"
+                    value={onlineCode}
+                    onChange={(e) => setOnlineCode(e.target.value.replace(/\D/g, ''))}
+                    className="w-full text-center text-2xl tracking-widest font-mono p-3 border-2 border-slate-200 rounded-xl mb-6 focus:border-amber-500 focus:outline-none"
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setIsOnlineCodeModalOpen(false);
+                        setOnlineCode('');
+                        if (paymentMethod === 'Online') setPaymentMethod('Cash'); // Reset if canceled
+                      }}
+                      className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors border-0 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (onlineCode.length === 5) {
+                          const matchedOrder = onlineOrders.find(o => o.orderId === onlineCode && o.status === 'Pending');
+                          if (matchedOrder) {
+                            const newCart = matchedOrder.products?.map(p => ({
+                              productName: p.productName || p.name,
+                              quantity: p.quantity,
+                              price: p.price
+                            })) || [];
+                            setCart(newCart);
+                            setOnlineOrderToFulfill(matchedOrder.orderId);
+                            setPaymentMethod('Online');
+                            setIsOnlineCodeModalOpen(false);
+                            setBillingMessage({ type: 'success', text: `Loaded online order #${matchedOrder.orderId}` });
+                          } else {
+                            alert('Order not found or already processed.');
+                          }
+                        } else {
+                          alert('Please enter a valid 5-digit code.');
+                        }
+                      }}
+                      className="flex-1 py-3 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors border-0 cursor-pointer"
+                    >
+                      Verify
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'online_orders' && (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-semibold text-slate-800 m-0 text-left">Online Orders</h3>
+            </div>
+            
+            {/* Toggle for New Orders vs Order History */}
+            <div className="flex gap-4 mb-6 border-b border-slate-200 pb-4">
+              <button
+                onClick={() => setOnlineOrderTab('new')}
+                className={`px-4 py-2 font-semibold rounded-lg transition-all border-0 cursor-pointer ${onlineOrderTab === 'new' ? 'bg-spice-dark text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                New Orders
+              </button>
+              <button
+                onClick={() => setOnlineOrderTab('history')}
+                className={`px-4 py-2 font-semibold rounded-lg transition-all border-0 cursor-pointer ${onlineOrderTab === 'history' ? 'bg-spice-dark text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                Order History
+              </button>
+            </div>
+
+            {onlineOrderTab === 'new' ? (
+              onlineOrders.filter(o => o.status === 'Pending').length === 0 ? (
+                <div className="text-center py-10 text-slate-500 font-medium bg-slate-50 rounded-xl border border-slate-100">
+                  <Globe size={48} className="mx-auto text-slate-300 mb-4" />
+                  <p className="m-0 text-lg">No new online orders at the moment.</p>
+                  <p className="text-sm mt-2">New orders will appear here automatically.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {onlineOrders.filter(o => o.status === 'Pending').map((order) => (
+                    <div key={order._id || order.orderId} className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <p className="font-semibold text-slate-800 m-0">Order #{order.orderId}</p>
+                          <p className="text-sm text-slate-500 m-0">
+                            Customer: {order.customerName || 'N/A'} {order.customerEmail ? `(${order.customerEmail})` : ''}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-spice-dark m-0">₹{Number(order.totalAmount || 0).toFixed(2)}</p>
+                          <p className="text-xs text-slate-400 m-0">{new Date(order.createdAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <div className="border-t border-slate-200 pt-3">
+                        <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Items</p>
+                        <ul className="m-0 pl-0 list-none space-y-1">
+                          {order.products?.map((item, idx) => (
+                            <li key={idx} className="flex justify-between text-sm text-slate-700 font-medium">
+                              <span>{item.quantity}x {item.productName || item.name}</span>
+                              <span className="font-mono">₹{Number(item.price * item.quantity).toFixed(2)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              onlineOrders.filter(o => o.status !== 'Pending').length === 0 ? (
+                <div className="text-center py-10 text-slate-500 font-medium bg-slate-50 rounded-xl border border-slate-100">
+                  <History size={48} className="mx-auto text-slate-300 mb-4" />
+                  <p className="m-0 text-lg">No online order history available.</p>
+                  <p className="text-sm mt-2">Past orders will be listed here.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {onlineOrders.filter(o => o.status !== 'Pending').map((order) => (
+                    <div key={order._id || order.orderId} className="bg-slate-50 border border-slate-100 rounded-xl p-4 opacity-75 hover:opacity-100 transition-opacity">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-slate-800 m-0">Order #{order.orderId}</p>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-600 uppercase">
+                              {order.status}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-500 m-0 mt-1">
+                            Customer: {order.customerName || 'N/A'} {order.customerEmail ? `(${order.customerEmail})` : ''}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-slate-700 m-0">₹{Number(order.totalAmount || 0).toFixed(2)}</p>
+                          <p className="text-xs text-slate-400 m-0">{new Date(order.createdAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <div className="border-t border-slate-200 pt-3">
+                        <ul className="m-0 pl-0 list-none space-y-1">
+                          {order.products?.map((item, idx) => (
+                            <li key={idx} className="flex justify-between text-sm text-slate-500">
+                              <span>{item.quantity}x {item.productName || item.name}</span>
+                              <span className="font-mono">₹{Number(item.price * item.quantity).toFixed(2)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
           </div>
         )}
 
@@ -1647,11 +1845,18 @@ const UnitPage = () => {
                         {idx === 0 ? (
                           <>
                             <td className="py-3.5 px-4 text-sm font-semibold" rowSpan={sale.items.length}>
-                              <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                                sale.paymentMethod === 'UPI' ? 'bg-indigo-50 text-indigo-700' : 'bg-amber-50 text-amber-700'
-                              }`}>
-                                {sale.paymentMethod || 'Cash'}
-                              </span>
+                              <div className="flex flex-col gap-1 items-start">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-block ${
+                                  sale.paymentMethod === 'UPI' ? 'bg-indigo-50 text-indigo-700' : 'bg-amber-50 text-amber-700'
+                                }`}>
+                                  {sale.paymentMethod || 'Cash'}
+                                </span>
+                                {sale.isOnline && (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 uppercase border border-emerald-200">
+                                    Online Order
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="py-3.5 px-4 text-right font-bold text-slate-800 font-mono" rowSpan={sale.items.length}>
                               ₹{Number(sale.totalAmount).toFixed(2)}
@@ -1677,7 +1882,7 @@ const UnitPage = () => {
                     <th className="py-4 px-5 font-semibold">Job ID</th>
                     <th className="py-4 px-5 font-semibold">Delivered Date</th>
                     <th className="py-4 px-5 font-semibold">Total Amount</th>
-                    <th className="py-4 px-5 font-semibold">Payment Status</th>
+                    <th className="py-4 px-5 font-semibold">Convoy Status</th>
                     <th className="py-4 px-5 font-semibold">Bill</th>
                   </tr>
                 </thead>
@@ -1693,11 +1898,11 @@ const UnitPage = () => {
                       <td className="py-4 px-5 text-slate-600">{bill.deliveredAt ? new Date(bill.deliveredAt).toLocaleString() : '—'}</td>
                       <td className="py-4 px-5 font-bold text-emerald-600" style={{ fontVariantNumeric: 'tabular-nums' }}>₹{Number(bill.totalAmount).toFixed(2)}</td>
                       <td className="py-4 px-5">
-                        {bill.paymentCompleted ? (
-                          <span className="biowin-badge-paid">Paid</span>
-                        ) : (
-                          <span className="biowin-badge-pending">Pending</span>
-                        )}
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                          bill.status === 'Delivered' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {bill.status || 'Delivered'}
+                        </span>
                       </td>
                       <td className="py-4 px-5">
                         <button
@@ -1963,59 +2168,257 @@ const UnitPage = () => {
           </div>
         )}
       </main>
+
+      {/* Request Stock Modal */}
+      {isRequestModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+            {/* Header */}
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 shrink-0">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2 m-0">
+                <PlusCircle size={24} className="text-spice-dark" />
+                Request Stock
+              </h2>
+              <button 
+                onClick={() => setIsRequestModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-full transition-colors border-0 cursor-pointer bg-transparent"
+              >
+                <XCircle size={24} />
+              </button>
+            </div>
+            
+            {/* Body */}
+            <div className="p-6 overflow-y-auto flex-grow flex flex-col gap-4 relative">
+              <p className="text-sm text-slate-500 m-0">
+                Select multiple products and set quantities to request stock from the global warehouse.
+              </p>
+              
+              {stockMessage.text && (
+                <div className={`p-4 rounded-xl text-sm font-semibold flex items-center gap-2 ${
+                  stockMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'
+                }`}>
+                  {stockMessage.type === 'success' ? <CheckCircle size={18} /> : <XCircle size={18} />}
+                  {stockMessage.text}
+                </div>
+              )}
+              
+              <div className="relative">
+                <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search global catalog..."
+                  value={globalProductSearchQuery}
+                  onChange={(e) => setGlobalProductSearchQuery(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 border-2 border-slate-100 rounded-xl text-sm outline-none focus:border-spice-dark focus:ring-4 focus:ring-spice-dark/10 transition-all font-medium text-slate-700 placeholder:text-slate-400"
+                />
+              </div>
+              
+              <div className="border-2 border-slate-100 rounded-xl overflow-hidden flex flex-col bg-slate-50">
+                <div className="max-h-[300px] overflow-y-auto divide-y divide-slate-100 p-2 flex flex-col gap-2">
+                  {globalProducts.filter(p => p.isAvailable !== false && (p.name.toLowerCase().includes(globalProductSearchQuery.toLowerCase()) || (p.productId && p.productId.toLowerCase().includes(globalProductSearchQuery.toLowerCase())))).length === 0 ? (
+                    <div className="p-8 text-center text-slate-400 font-medium flex flex-col items-center gap-2">
+                      <Package size={32} className="opacity-20" />
+                      No products found matching your search.
+                    </div>
+                  ) : globalProducts.filter(p => p.isAvailable !== false && (p.name.toLowerCase().includes(globalProductSearchQuery.toLowerCase()) || (p.productId && p.productId.toLowerCase().includes(globalProductSearchQuery.toLowerCase())))).map(p => {
+                    const quantity = selectedProductsForRequest[p.productId] || '';
+                    const isSelected = selectedProductsForRequest[p.productId] !== undefined;
+                    return (
+                      <div
+                        key={p.productId}
+                        className={`p-3 rounded-lg border-2 transition-all flex items-center justify-between gap-4 ${
+                          isSelected 
+                            ? 'bg-orange-50/50 border-amber-500 shadow-sm' 
+                            : 'bg-white border-transparent hover:border-slate-200 shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-center gap-4 flex-grow">
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={(e) => {
+                              const newSelections = { ...selectedProductsForRequest };
+                              if (e.target.checked) {
+                                newSelections[p.productId] = '1';
+                              } else {
+                                delete newSelections[p.productId];
+                              }
+                              setSelectedProductsForRequest(newSelections);
+                            }}
+                            className="w-5 h-5 rounded border-slate-300 text-spice-dark focus:ring-spice-dark cursor-pointer accent-spice-dark shrink-0"
+                          />
+                          <div className="flex flex-col flex-grow cursor-pointer" onClick={() => {
+                            const newSelections = { ...selectedProductsForRequest };
+                            if (!isSelected) {
+                              newSelections[p.productId] = '1';
+                            } else {
+                              delete newSelections[p.productId];
+                            }
+                            setSelectedProductsForRequest(newSelections);
+                          }}>
+                            <span className="font-bold text-slate-800">{p.name}</span>
+                            <div className="flex gap-2 items-center flex-wrap">
+                              <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">ID: {p.productId}</span>
+                              <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">₹{Number(p.price).toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {isSelected && (
+                          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm shrink-0">
+                            <label className="text-xs font-bold text-slate-500">QTY</label>
+                            <input 
+                              type="number"
+                              min="1"
+                              value={quantity}
+                              onChange={(e) => {
+                                setSelectedProductsForRequest({
+                                  ...selectedProductsForRequest,
+                                  [p.productId]: e.target.value
+                                });
+                              }}
+                              className="w-16 text-center font-bold text-slate-800 outline-none"
+                              placeholder="1"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            
+            {/* Footer */}
+            <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
+              <div className="text-sm font-bold text-slate-500">
+                {Object.keys(selectedProductsForRequest).length} product(s) selected
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => {
+                    setIsRequestModalOpen(false);
+                    setSelectedProductsForRequest({});
+                    setStockMessage({ type: '', text: '' });
+                  }}
+                  className="px-6 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer border-0 bg-transparent"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleRequestStock}
+                  disabled={Object.keys(selectedProductsForRequest).length === 0}
+                  className={`px-6 py-2.5 rounded-xl font-bold text-white transition-all shadow-sm border-0 flex items-center gap-2 ${
+                    Object.keys(selectedProductsForRequest).length > 0 
+                      ? 'bg-spice-dark hover:bg-spice-darker hover:shadow cursor-pointer active:scale-95' 
+                      : 'bg-slate-300 cursor-not-allowed'
+                  }`}
+                >
+                  <PlusCircle size={18} />
+                  Submit Request
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 const WarehouseDashboardContent = () => {
-  const [unitStocks, setUnitStocks] = useState([]);
+  const [requests, setRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [expandedUnitId, setExpandedUnitId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // New state variables for grouped view
+  const [expandedUnitId, setExpandedUnitId] = useState(null);
+  const [unitStocks, setUnitStocks] = useState({});
+  const [isFetchingStock, setIsFetchingStock] = useState(false);
+
   useEffect(() => {
-    fetchUnitStocks();
+    fetchRequests();
   }, []);
 
-  const fetchUnitStocks = async () => {
+  const fetchRequests = async () => {
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/warehouses/unit-stocks');
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + '/api/warehouses/requests');
       const data = await res.json();
       if (data.success) {
-        setUnitStocks(data.unitStocks);
+        setRequests(data.requests);
       }
     } catch (err) {
-      console.error("Error fetching unit stocks:", err);
+      console.error("Error fetching requests:", err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const toggleExpand = (unitId) => {
+  const handleExpandUnit = async (unitId) => {
     if (expandedUnitId === unitId) {
       setExpandedUnitId(null);
-    } else {
-      setExpandedUnitId(unitId);
+      return;
+    }
+    setExpandedUnitId(unitId);
+
+    if (!unitStocks[unitId]) {
+      setIsFetchingStock(true);
+      try {
+        const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/units/${unitId}/products`);
+        const data = await res.json();
+        if (data.success) {
+          setUnitStocks(prev => ({ ...prev, [unitId]: data.products }));
+        }
+      } catch (err) {
+        console.error("Error fetching unit stock:", err);
+      } finally {
+        setIsFetchingStock(false);
+      }
     }
   };
 
-  const filteredUnits = unitStocks.filter(u => 
-    u.unitName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    u.unitId.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const handleDeleteRequest = async (requestId) => {
+    if (!window.confirm("Are you sure you want to delete this pending request?")) return;
+    try {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/requests/${requestId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchRequests();
+      }
+    } catch (err) {
+      console.error("Error deleting request:", err);
+    }
+  };
+
+  // Group requests by unit
+  const groupedRequests = requests.reduce((acc, req) => {
+    if (!acc[req.unitId]) {
+      acc[req.unitId] = { unitName: req.unitName, requests: [] };
+    }
+    acc[req.unitId].requests.push(req);
+    return acc;
+  }, {});
+
+  // Apply search filtering on the grouped data
+  const filteredUnits = Object.entries(groupedRequests).filter(([unitId, data]) => {
+    return data.unitName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+           data.requests.some(r => r.productName.toLowerCase().includes(searchQuery.toLowerCase()));
+  });
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 m-8">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h3 className="text-xl font-bold text-slate-800 m-0">Units Stock Overview</h3>
-          <p className="text-sm text-slate-500 mt-1">Monitor low stock and drill down into unit inventories.</p>
+          <h3 className="text-xl font-bold text-slate-800 m-0">Unit Requests</h3>
+          <p className="text-sm text-slate-500 mt-1">Monitor stock requests grouped by unit.</p>
         </div>
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search units..."
+            placeholder="Search units or products..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-spice-dark focus:ring-1 focus:ring-spice-dark w-64"
@@ -2024,111 +2427,139 @@ const WarehouseDashboardContent = () => {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-10 text-slate-500">Loading unit stock data...</div>
+        <div className="text-center py-10 text-slate-500">Loading requests...</div>
+      ) : filteredUnits.length === 0 ? (
+        <div className="text-center py-10 text-slate-400">No requests found.</div>
       ) : (
         <div className="flex flex-col gap-4">
-          {filteredUnits.length === 0 ? (
-            <div className="text-center py-8 text-slate-400">No units found.</div>
-          ) : (
-            filteredUnits.map((unit) => {
-              const lowStockItems = unit.stocks.filter(s => s.quantity > 0 && s.quantity <= 10);
-              const outOfStockItems = unit.stocks.filter(s => s.quantity <= 0);
-              const hasAlerts = lowStockItems.length > 0 || outOfStockItems.length > 0;
-              const isExpanded = expandedUnitId === unit.unitId;
+          {filteredUnits.map(([unitId, data]) => {
+            const isExpanded = expandedUnitId === unitId;
+            const stockData = unitStocks[unitId];
 
-              return (
-                <div key={unit.unitId} className={`border rounded-xl overflow-hidden transition-all duration-300 ${isExpanded ? 'border-spice-dark/30 shadow-md' : 'border-slate-200 hover:border-spice-dark/50'}`}>
-                  {/* Unit Header */}
-                  <div 
-                    onClick={() => toggleExpand(unit.unitId)}
-                    className={`p-4 cursor-pointer flex justify-between items-center bg-white hover:bg-slate-50 transition-colors ${isExpanded ? 'bg-slate-50 border-b border-slate-100' : ''}`}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-spice-dark text-white flex items-center justify-center shrink-0">
-                        <Layers size={20} />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-slate-800 m-0 text-lg flex items-center gap-2">
-                          {unit.unitName}
-                          <span className="text-xs font-mono bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">#{unit.unitId}</span>
-                        </h4>
-                        <p className="text-xs text-slate-500 m-0 mt-0.5">Total Products: {unit.stocks.length}</p>
-                      </div>
+            return (
+              <div key={unitId} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
+                <button 
+                  onClick={() => handleExpandUnit(unitId)}
+                  className="w-full bg-slate-50 hover:bg-slate-100 transition-colors p-5 flex justify-between items-center cursor-pointer border-0 text-left border-b border-transparent"
+                  style={{ borderBottomColor: isExpanded ? '#e2e8f0' : 'transparent' }}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="bg-white p-2.5 rounded-lg shadow-sm border border-slate-200 text-spice-dark">
+                      <Warehouse size={20} />
                     </div>
-
-                    <div className="flex items-center gap-6">
-                      {/* Alerts Badge */}
-                      {hasAlerts ? (
-                        <div className="flex gap-2">
-                          {outOfStockItems.length > 0 && (
-                            <span className="flex items-center gap-1 bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">
-                              <XCircle size={14} /> {outOfStockItems.length} Out of Stock
-                            </span>
-                          )}
-                          {lowStockItems.length > 0 && (
-                            <span className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">
-                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                              {lowStockItems.length} Low Stock
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">
-                          <CheckCircle size={14} /> Healthy Stock
-                        </span>
-                      )}
-                      
-                      {/* Expand Icon */}
-                      <div className={`text-slate-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                      </div>
+                    <div>
+                      <h4 className="text-lg font-bold text-slate-800 m-0">{data.unitName}</h4>
+                      <p className="text-xs text-slate-500 font-medium m-0 mt-0.5">Unit ID: {unitId}</p>
                     </div>
                   </div>
+                  <div className="flex items-center gap-6">
+                    <div className="flex flex-col items-end">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Pending Requests</span>
+                      <span className="text-lg font-black text-slate-800">{data.requests.length} Items</span>
+                    </div>
+                  </div>
+                </button>
 
-                  {/* Drill Down Content */}
-                  {isExpanded && (
-                    <div className="p-0 bg-slate-50/50">
-                      {unit.stocks.length === 0 ? (
-                        <div className="p-6 text-center text-slate-500 text-sm">No stock data available for this unit.</div>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left border-collapse">
-                            <thead>
-                              <tr className="bg-slate-100/50 text-slate-500 text-xs uppercase tracking-wider">
-                                <th className="py-3 px-6 font-semibold">Product Name</th>
-                                <th className="py-3 px-6 font-semibold">Product ID</th>
-                                <th className="py-3 px-6 font-semibold">Price</th>
-                                <th className="py-3 px-6 font-semibold">Quantity</th>
-                                <th className="py-3 px-6 font-semibold">Status</th>
+                {isExpanded && (
+                  <div className="p-6 bg-white animate-in slide-in-from-top-2 duration-200">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                      {/* Left side: Requests Table */}
+                      <div className="flex flex-col">
+                        <h5 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2 flex items-center gap-2">
+                          <PlusCircle size={16} className="text-amber-500" /> 
+                          Requested Products
+                        </h5>
+                        <div className="border border-slate-100 rounded-lg overflow-hidden">
+                          <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+                              <tr>
+                                <th className="px-4 py-2 font-semibold">Product</th>
+                                <th className="px-4 py-2 font-semibold text-center">Qty</th>
+                                <th className="px-4 py-2 font-semibold">Status</th>
+                                <th className="px-4 py-2 text-right font-semibold">Action</th>
                               </tr>
                             </thead>
-                            <tbody>
-                              {unit.stocks.sort((a, b) => a.quantity - b.quantity).map((item) => (
-                                <tr key={item.productId} className="border-b border-slate-100 last:border-0 hover:bg-white transition-colors">
-                                  <td className="py-3 px-6 font-semibold text-slate-800">{item.name}</td>
-                                  <td className="py-3 px-6 font-mono text-xs text-slate-400">#{item.productId}</td>
-                                  <td className="py-3 px-6 font-medium text-slate-600">₹{Number(item.price).toFixed(2)}</td>
-                                  <td className="py-3 px-6 font-bold text-slate-700">{item.quantity}</td>
-                                  <td className="py-3 px-6">
-                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${
-                                      item.quantity > 10 ? 'bg-emerald-100 text-emerald-800' : 
-                                      item.quantity > 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                            <tbody className="divide-y divide-slate-100">
+                              {data.requests.map(req => (
+                                <tr key={req.requestId} className="hover:bg-slate-50">
+                                  <td className="px-4 py-2.5 font-medium text-slate-800">{req.productName}</td>
+                                  <td className="px-4 py-2.5 font-bold text-slate-800 text-center">{req.quantity}</td>
+                                  <td className="px-4 py-2.5">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                                      req.status === 'Pending' ? 'bg-amber-100 text-amber-800' : 
+                                      req.status === 'Dispatched' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
                                     }`}>
-                                      {item.quantity > 10 ? 'In Stock' : item.quantity > 0 ? 'Low Stock' : 'Out of Stock'}
+                                      {req.status}
                                     </span>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right">
+                                    {req.status === 'Pending' && (
+                                      <button 
+                                        onClick={() => handleDeleteRequest(req.requestId)}
+                                        className="text-red-500 hover:text-red-600 hover:bg-red-50 p-1.5 rounded transition-colors cursor-pointer border-0 bg-transparent"
+                                        title="Delete Request"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    )}
                                   </td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
                         </div>
-                      )}
+                      </div>
+
+                      {/* Right side: Unit Stock Table */}
+                      <div className="flex flex-col">
+                        <h5 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2 flex items-center gap-2">
+                          <Package size={16} className="text-emerald-500" />
+                          Current Unit Stock
+                        </h5>
+                        
+                        {isFetchingStock ? (
+                          <div className="p-8 text-center text-slate-400 text-sm font-medium">Fetching unit inventory...</div>
+                        ) : !stockData ? (
+                          <div className="p-8 text-center text-slate-400 text-sm font-medium">No stock data available.</div>
+                        ) : stockData.length === 0 ? (
+                          <div className="p-8 text-center text-slate-400 text-sm font-medium border border-slate-100 rounded-lg">Unit has no stock.</div>
+                        ) : (
+                          <div className="border border-slate-100 rounded-lg overflow-hidden max-h-[300px] overflow-y-auto">
+                            <table className="w-full text-left text-sm">
+                              <thead className="bg-slate-50 text-slate-500 text-xs uppercase sticky top-0 shadow-sm z-10">
+                                <tr>
+                                  <th className="px-4 py-2 font-semibold">Product</th>
+                                  <th className="px-4 py-2 font-semibold text-center">In Hand</th>
+                                  <th className="px-4 py-2 font-semibold text-right">Price</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {stockData.map(prod => (
+                                  <tr key={prod.productId} className="hover:bg-slate-50">
+                                    <td className="px-4 py-2.5 font-medium text-slate-800">{prod.name}</td>
+                                    <td className="px-4 py-2.5 text-center">
+                                      <span className={`px-2 py-0.5 rounded font-bold text-xs ${
+                                        prod.quantity > 10 ? 'bg-emerald-100 text-emerald-800' : prod.quantity > 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                                      }`}>
+                                        {prod.quantity}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold text-slate-500">
+                                      ₹{Number(prod.price).toFixed(2)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })
-          )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -2155,7 +2586,6 @@ const WarehouseProductsPageContent = () => {
   const [products, setProducts] = useState([]);
   const [productName, setProductName] = useState('');
   const [productPrice, setProductPrice] = useState('');
-  const [productExpiryDate, setProductExpiryDate] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
   const [searchQuery, setSearchQuery] = useState('');
   const [editProductId, setEditProductId] = useState(null);
@@ -2194,14 +2624,13 @@ const WarehouseProductsPageContent = () => {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: productName, price: productPrice, expiryDate: productExpiryDate })
+        body: JSON.stringify({ name: productName, price: productPrice })
       });
       const data = await res.json();
       if (data.success) {
         setMessage({ type: 'success', text: data.message });
         setProductName('');
         setProductPrice('');
-        setProductExpiryDate('');
         setEditProductId(null);
         fetchProducts();
       } else {
@@ -2251,7 +2680,6 @@ const WarehouseProductsPageContent = () => {
     setEditProductId(product.productId);
     setProductName(product.name);
     setProductPrice(product.price);
-    setProductExpiryDate(product.expiryDate ? new Date(product.expiryDate).toISOString().split('T')[0] : '');
     setMessage({ type: '', text: '' });
   };
 
@@ -2259,7 +2687,6 @@ const WarehouseProductsPageContent = () => {
     setEditProductId(null);
     setProductName('');
     setProductPrice('');
-    setProductExpiryDate('');
     setMessage({ type: '', text: '' });
   };
 
@@ -2291,7 +2718,6 @@ const WarehouseProductsPageContent = () => {
                 <th className="py-3 px-4">Hex ID</th>
                 <th className="py-3 px-4">Product Name</th>
                 <th className="py-3 px-4">Price</th>
-                <th className="py-3 px-4">Expiry Date</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
@@ -2306,7 +2732,6 @@ const WarehouseProductsPageContent = () => {
                   <td className="py-3.5 px-4 font-mono text-xs font-bold text-slate-400">{prod.productId || 'N/A'}</td>
                   <td className="py-3.5 px-4 font-semibold text-slate-800">{prod.name}</td>
                   <td className="py-3.5 px-4">₹{Number(prod.price).toFixed(2)}</td>
-                  <td className="py-3.5 px-4">{prod.expiryDate ? new Date(prod.expiryDate).toLocaleDateString() : 'N/A'}</td>
                   <td className="py-3.5 px-4">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                       prod.isAvailable !== false ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
@@ -2384,15 +2809,6 @@ const WarehouseProductsPageContent = () => {
               className="px-3.5 py-2 border border-slate-200 rounded-lg outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10"
             />
           </div>
-          <div className="flex flex-col gap-1.5 text-left">
-            <label className="text-sm font-semibold text-slate-600">Expiry Date (Optional)</label>
-            <input 
-              type="date"
-              value={productExpiryDate}
-              onChange={(e) => setProductExpiryDate(e.target.value)}
-              className="px-3.5 py-2 border border-slate-200 rounded-lg outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10"
-            />
-          </div>
           <div className="flex gap-2 mt-2">
             <button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg py-2.5 font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer border-0">
               {editProductId ? <><Edit2 size={18} /> Update</> : <><PlusCircle size={18} /> Add Product</>}
@@ -2425,9 +2841,12 @@ const WarehouseProductsPage = ({ logout }) => {
   );
 };
 
-const ConvoyPage = ({ logout }) => {
+import ConvoyJobsPage from './pages/ConvoyJobsPage';
+
+const ConvoyPage = ({ logout, children }) => {
   const navItems = [
-    { label: 'Convoy', icon: Truck, path: '/convoy' }
+    { label: 'Orders', icon: Truck, path: '/convoy' },
+    { label: 'Jobs', icon: Briefcase, path: '/convoy/jobs' }
   ];
   
   const convoyDataString = sessionStorage.getItem('biowin_convoy_data');
@@ -2436,7 +2855,7 @@ const ConvoyPage = ({ logout }) => {
 
   return (
     <DashboardLayout navItems={navItems} logout={logout}>
-      <ConvoyDashboardPage convoyId={convoyId} />
+      {children ? children : <ConvoyDashboardPage convoyId={convoyId} />}
     </DashboardLayout>
   );
 };
@@ -2486,6 +2905,13 @@ function App() {
         <Route path="/convoy" element={
           <ProtectedRoute isAuthenticated={isAuthenticated} userRole={userRole} requiredRole="convoy">
             <ConvoyPage logout={logout} />
+          </ProtectedRoute>
+        } />
+        <Route path="/convoy/jobs" element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} userRole={userRole} requiredRole="convoy">
+            <ConvoyPage logout={logout}>
+              <ConvoyJobsPage convoyId={JSON.parse(sessionStorage.getItem('biowin_convoy_data') || '{}').convoyId} />
+            </ConvoyPage>
           </ProtectedRoute>
         } />
       </Routes>
