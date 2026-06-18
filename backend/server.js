@@ -478,6 +478,58 @@ app.post('/api/units/:unitId/reservations', async (req, res) => {
   }
 });
 
+// Cancel a reservation and return to stock
+app.post('/api/units/:unitId/reservations/:orderId/cancel', async (req, res) => {
+  const { unitId, orderId } = req.params;
+
+  try {
+    const db = client.db("Units");
+    const unit = await db.collection("units_metadata").findOne({ unitId });
+    if (!unit) {
+      return res.status(404).json({ success: false, message: "Unit not found" });
+    }
+
+    const unitDb = client.db(`Unit_${unitId}`);
+    
+    // Find the reservation
+    const reservation = await unitDb.collection("reservation").findOne({ orderId });
+    if (!reservation) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    if (reservation.status !== 'Pending') {
+      return res.status(400).json({ success: false, message: "Only pending orders can be cancelled" });
+    }
+
+    // Return items to stock
+    if (reservation.products && Array.isArray(reservation.products)) {
+      for (const item of reservation.products) {
+        const productName = item.productName || item.name;
+        if (productName) {
+          const existingProduct = await unitDb.collection("stocks").findOne({ name: productName });
+          if (existingProduct) {
+            await unitDb.collection("stocks").updateOne(
+              { _id: existingProduct._id },
+              { $inc: { quantity: Number(item.quantity) } }
+            );
+          }
+        }
+      }
+    }
+
+    // Update reservation status to Cancelled
+    await unitDb.collection("reservation").updateOne(
+      { orderId },
+      { $set: { status: 'Cancelled' } }
+    );
+
+    res.status(200).json({ success: true, message: "Order cancelled and items returned to stock" });
+  } catch (err) {
+    console.error("Error cancelling reservation:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
 // Get reservations for a unit
 app.get('/api/units/:unitId/reservations', async (req, res) => {
   const { unitId } = req.params;

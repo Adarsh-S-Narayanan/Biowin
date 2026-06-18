@@ -578,6 +578,27 @@ const UnitPage = () => {
     }
   };
 
+  const handleCancelOnlineOrder = async (orderId) => {
+    if (!unitData) return;
+    if (!window.confirm(`Are you sure you want to cancel order #${orderId} and return items to stock?`)) return;
+    try {
+      const res = await fetch((import.meta.env.VITE_API_URL || '') + `/api/units/${unitData.unitId}/reservations/${orderId}/cancel`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBillingMessage({ type: 'success', text: 'Order cancelled and stock returned.' });
+        fetchOnlineOrders();
+        fetchProducts(); // Refresh stock
+      } else {
+        setBillingMessage({ type: 'error', text: data.message || 'Failed to cancel order.' });
+      }
+    } catch (err) {
+      console.error("Error cancelling order:", err);
+      setBillingMessage({ type: 'error', text: 'Server error while cancelling order.' });
+    }
+  };
+
   const fetchUnitRequests = async () => {
     if (!unitData) return;
     try {
@@ -1738,6 +1759,14 @@ const UnitPage = () => {
                             </li>
                           ))}
                         </ul>
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-200 flex justify-end">
+                        <button
+                          onClick={() => handleCancelOnlineOrder(order.orderId)}
+                          className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md border border-red-200 transition-colors cursor-pointer"
+                        >
+                          Return to Stock (After 1 week)
+                        </button>
                       </div>
                     </div>
                   ))}
