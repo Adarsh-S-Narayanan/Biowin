@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useParams } from 'react-router-dom';
-import { ShieldCheck, Stethoscope, Warehouse, Truck, ArrowLeft, LogIn, ShoppingBag, History, PlusCircle, Package, Trash2, Coins, TrendingUp, Layers, LogOut, Search, Edit2, CheckCircle, XCircle, RotateCcw, Briefcase, Globe } from 'lucide-react';
+import { ShieldCheck, Stethoscope, Warehouse, Truck, ArrowLeft, LogIn, ShoppingBag, History, PlusCircle, Package, Trash2, Coins, TrendingUp, Layers, LogOut, Search, Edit2, CheckCircle, XCircle, RotateCcw, Briefcase, Globe, MapPin } from 'lucide-react';
 import DashboardLayout from './components/DashboardLayout';
 import AdminPageContent from './pages/AdminPage';
 import AdminUnitsPageContent from './pages/AdminUnitsPage';
@@ -8,6 +8,7 @@ import AdminWarehousesPageContent from './pages/AdminWarehousesPage';
 import AdminConvoysPageContent from './pages/AdminConvoysPage';
 import ConvoyDashboardPage from './pages/ConvoyDashboardPage';
 import WayanadMountainBg from './components/WayanadMountainBg';
+import WarehouseUnitsPageContent from './pages/WarehouseUnitsPage';
 
 // --- Auth Context Mock ---
 // Since we are focusing on Admin and bypassing standard Firebase email auth
@@ -2598,7 +2599,8 @@ const WarehouseDashboardContent = () => {
 const WarehousePage = ({ logout }) => {
   const navItems = [
     { label: 'Warehouse', icon: Warehouse, path: '/warehouse' },
-    { label: 'Products', icon: Package, path: '/warehouse/products' }
+    { label: 'Products', icon: Package, path: '/warehouse/products' },
+    { label: 'Units', icon: MapPin, path: '/warehouse/units' }
   ];
   return (
     <DashboardLayout navItems={navItems} logout={logout} title="Warehouse" subtitle="Inventory Management">
@@ -2857,7 +2859,8 @@ const WarehouseProductsPageContent = () => {
 const WarehouseProductsPage = ({ logout }) => {
   const navItems = [
     { label: 'Warehouse', icon: Warehouse, path: '/warehouse' },
-    { label: 'Products', icon: Package, path: '/warehouse/products' }
+    { label: 'Products', icon: Package, path: '/warehouse/products' },
+    { label: 'Units', icon: MapPin, path: '/warehouse/units' }
   ];
   return (
     <DashboardLayout navItems={navItems} logout={logout} title="Warehouse" subtitle="Inventory Management">
@@ -2866,6 +2869,21 @@ const WarehouseProductsPage = ({ logout }) => {
         <p className="text-slate-500 mt-1">Manage global product catalog</p>
       </div>
       <WarehouseProductsPageContent />
+    </DashboardLayout>
+  );
+};
+
+const WarehouseUnitsPage = ({ logout }) => {
+  const navItems = [
+    { label: 'Warehouse', icon: Warehouse, path: '/warehouse' },
+    { label: 'Products', icon: Package, path: '/warehouse/products' },
+    { label: 'Units', icon: MapPin, path: '/warehouse/units' }
+  ];
+  return (
+    <DashboardLayout navItems={navItems} logout={logout} title="Warehouse" subtitle="Units">
+      <div className="px-8 pt-8 h-full overflow-y-auto">
+        <WarehouseUnitsPageContent />
+      </div>
     </DashboardLayout>
   );
 };
@@ -2929,6 +2947,11 @@ function App() {
         <Route path="/warehouse/products" element={
           <ProtectedRoute isAuthenticated={isAuthenticated} userRole={userRole} requiredRole="warehouse">
             <WarehouseProductsPage logout={logout} />
+          </ProtectedRoute>
+        } />
+        <Route path="/warehouse/units" element={
+          <ProtectedRoute isAuthenticated={isAuthenticated} userRole={userRole} requiredRole="warehouse">
+            <WarehouseUnitsPage logout={logout} />
           </ProtectedRoute>
         } />
         <Route path="/convoy" element={
