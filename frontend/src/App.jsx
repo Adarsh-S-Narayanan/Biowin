@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useParams } from 'react-router-dom';
-import { ShieldCheck, Stethoscope, Warehouse, Truck, ArrowLeft, LogIn, ShoppingBag, History, PlusCircle, Package, Trash2, Coins, TrendingUp, Layers, LogOut, Search, Edit2, CheckCircle, XCircle, RotateCcw, Briefcase, Globe, MapPin } from 'lucide-react';
+import { ShieldCheck, Stethoscope, Warehouse, Truck, ArrowLeft, LogIn, ShoppingBag, History, PlusCircle, Package, Trash2, Coins, TrendingUp, Layers, LogOut, Search, Edit2, CheckCircle, XCircle, RotateCcw, Briefcase, Globe, MapPin, Eye, EyeOff } from 'lucide-react';
 import DashboardLayout from './components/DashboardLayout';
 import AdminPageContent from './pages/AdminPage';
 import AdminUnitsPageContent from './pages/AdminUnitsPage';
@@ -92,6 +92,7 @@ const Login = ({ login, isAuthenticated, userRole }) => {
   const { role } = useParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
@@ -211,19 +212,33 @@ const Login = ({ login, isAuthenticated, userRole }) => {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <label style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.875rem', letterSpacing: '0.01em' }}>Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="login-input-premium"
-              style={{
-                padding: '0.875rem 1rem', border: '1.5px solid #e2e8f0',
-                borderRadius: '12px', fontSize: '1rem', outline: 'none',
-                transition: 'all 0.2s ease', background: '#f8fafc', color: '#0f172a',
-              }}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="login-input-premium"
+                style={{
+                  padding: '0.875rem 1rem', border: '1.5px solid #e2e8f0',
+                  borderRadius: '12px', fontSize: '1rem', outline: 'none',
+                  transition: 'all 0.2s ease', background: '#f8fafc', color: '#0f172a',
+                  width: '100%', boxSizing: 'border-box'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer', color: '#64748b',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px'
+                }}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
           <button
             type="submit"
@@ -494,6 +509,7 @@ const UnitPage = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [unitIdInput, setUnitIdInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+  const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [unitData, setUnitData] = useState(null);
   
@@ -1060,19 +1076,33 @@ const UnitPage = () => {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <label style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.875rem' }}>Password</label>
-              <input
-                type="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="unit-login-input"
-                style={{
-                  padding: '0.875rem 1rem', border: '1.5px solid #e2e8f0',
-                  borderRadius: '12px', fontSize: '1rem', outline: 'none',
-                  transition: 'all 0.2s ease', background: '#f8fafc', color: '#0f172a',
-                }}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPasswordInput ? "text" : "password"}
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  className="unit-login-input"
+                  style={{
+                    padding: '0.875rem 1rem', border: '1.5px solid #e2e8f0',
+                    borderRadius: '12px', fontSize: '1rem', outline: 'none',
+                    transition: 'all 0.2s ease', background: '#f8fafc', color: '#0f172a',
+                    width: '100%', boxSizing: 'border-box'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordInput(!showPasswordInput)}
+                  style={{
+                    position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', cursor: 'pointer', color: '#64748b',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px'
+                  }}
+                >
+                  {showPasswordInput ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
             <button
               type="submit"
